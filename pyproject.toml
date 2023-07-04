@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "tibert"
+version = "0.0.1"
+description = "BERT for Coreference Resolution"
+authors = ["Arthur Amalvy <arthur.amalvy@univ-avignon.fr>"]
+license = "GPL-3.0-only"
+readme = "README.md"
+packages = [
+    { include = "tibert" }
+]
+
+[tool.poetry.dependencies]
+# required dependencies
+python = "^3.8,<3.11"
+torch = ">=2.0.0, !=2.0.1"
+transformers = "^4.30.2"
+tqdm = "^4.62.3"
+networkx = "^2.6.3"
+more-itertools = "^8.12.0"
+# TODO: neleval
+neleval = "^3.1.1"
+rich = "^13.4.2"
+sacremoses = "^0.0.53"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
