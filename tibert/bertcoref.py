@@ -158,7 +158,7 @@ class CoreferenceDocument:
                 except ValueError:
                     continue
                 new_chain.append(
-                    Mention(tokens[start_idx : end_idx + 1], start_idx, end_idx)
+                    Mention(tokens[start_idx : end_idx + 1], start_idx, end_idx + 1)
                 )
             if len(new_chain) > 0:
                 new_chains.append(new_chain)
@@ -193,7 +193,7 @@ class CoreferenceDocument:
                 new_end_idx = wp_to_token[mention.end_idx]
                 new_chain.append(
                     Mention(
-                        tokens[new_start_idx : new_end_idx + 1],
+                        tokens[new_start_idx:new_end_idx],
                         new_start_idx,
                         new_end_idx,
                     )
@@ -227,7 +227,7 @@ class CoreferenceDocument:
                 # singleton cluster
                 if mention_labels[i] == 1:
                     start_idx, end_idx = spans_idx[i]
-                    mention_tokens = tokens[start_idx : end_idx + 1]
+                    mention_tokens = tokens[start_idx:end_idx]
                     chains.append([Mention(mention_tokens, start_idx, end_idx)])
                     already_visited_mentions.append(i)
 
@@ -237,7 +237,7 @@ class CoreferenceDocument:
                 continue
 
             start_idx, end_idx = spans_idx[i]
-            mention_tokens = tokens[start_idx : end_idx + 1]
+            mention_tokens = tokens[start_idx:end_idx]
             chain = [Mention(mention_tokens, start_idx, end_idx)]
 
             for j, label in enumerate(mlabels):
@@ -246,7 +246,7 @@ class CoreferenceDocument:
                     continue
 
                 start_idx, end_idx = spans_idx[j]
-                mention_tokens = tokens[start_idx : end_idx + 1]
+                mention_tokens = tokens[start_idx:end_idx]
                 chain.append(Mention(mention_tokens, start_idx, end_idx))
                 already_visited_mentions.append(j)
 
@@ -426,9 +426,9 @@ class CoreferenceDataset(Dataset):
 
                     if mention_is_ending:
                         mention_start_idx = open_mentions[chain_id].pop()
-                        mention_end_idx = len(document_tokens) - 1
+                        mention_end_idx = len(document_tokens)
                         mention = Mention(
-                            document_tokens[mention_start_idx : mention_end_idx + 1],
+                            document_tokens[mention_start_idx:mention_end_idx],
                             mention_start_idx,
                             mention_end_idx,
                         )
@@ -665,7 +665,7 @@ class BertCoreferenceResolutionOutput:
                 # the antecedent is the dummy mention : maybe we have
                 # a one-mention chain ?
                 if top_antecedent_idx == antecedents_nb - 1:
-                    if self.top_mentions_scores[b_i][m_j].item() > 0.0:
+                    if float(self.top_mentions_scores[b_i][m_j].item()) > 0.0:
                         G.add_node(span_mention)
                     continue
 
@@ -907,7 +907,7 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
 
         # distance between a span and its antecedent is defined to be
         # the span start index minus the antecedent span end index
-        dist = start_end_idx_combinations[:, 0] - start_end_idx_combinations[:, 1]
+        dist = start_end_idx_combinations[:, 0] - start_end_idx_combinations[:, 1] + 1
         assert dist.shape == (p * p,)
         dist = dist.reshape(spans_nb, spans_nb)
 

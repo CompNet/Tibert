@@ -37,7 +37,7 @@ def spans_indexs(seq: List, max_len: int) -> List[Tuple[int, int]]:
     for i in range(1, min(len(seq), max_len + 1)):
         for span in windowed(range(len(seq)), i):
             span = cast(Tuple[int, ...], span)
-            indexs.append((min(span), max(span)))
+            indexs.append((min(span), max(span) + 1))
     return indexs
 
 
@@ -124,7 +124,7 @@ def pprint_coreference_document(doc: CoreferenceDocument):
         related_chains = [
             (chain_i, start_i, end_i)
             for chain_i, start_i, end_i in mentions
-            if start_i == token_i or end_i == token_i
+            if start_i == token_i or end_i - 1 == token_i
         ]
 
         for chain_i, start_i, _ in related_chains:
@@ -134,7 +134,7 @@ def pprint_coreference_document(doc: CoreferenceDocument):
         out.append(token)
 
         for chain_i, _, end_i in related_chains:
-            if token_i == end_i:
+            if token_i == end_i - 1:
                 out.append(f")[/red]")
 
     try:
