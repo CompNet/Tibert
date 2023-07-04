@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "tibert"
-version = "0.0.1"
+version = "0.0.2"
 description = "BERT for Coreference Resolution"
 authors = ["Arthur Amalvy <arthur.amalvy@univ-avignon.fr>"]
 license = "GPL-3.0-only"
