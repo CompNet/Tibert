@@ -286,6 +286,10 @@ class DataCollatorForSpanClassification(DataCollatorMixin):
             coref_labels and mention_labels
         )
 
+        warning_state = self.tokenizer.deprecation_warnings.get(
+            "Asking-to-pad-a-fast-tokenizer", False
+        )
+        self.tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = True
         batch = self.tokenizer.pad(
             features,
             padding=self.padding,
@@ -294,6 +298,9 @@ class DataCollatorForSpanClassification(DataCollatorMixin):
             # they are not of the same length yet.
             return_tensors="pt" if coref_labels is None else None,
         )
+        self.tokenizer.deprecation_warnings[
+            "Asking-to-pad-a-fast-tokenizer"
+        ] = warning_state
 
         # keep encoding info
         batch._encodings = [f.encodings[0] for f in features]
