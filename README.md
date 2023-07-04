@@ -3,9 +3,9 @@
 **Note that this is an early release. Don't hesitate to report bugs/possible improvements! There are surely many.**
 
 
-# tibert
+# Tibert
 
-`tibert` is a transformers-compatible reproduction from the paper [End-to-end Neural Coreference Resolution](https://aclanthology.org/D17-1018/) with several modifications. Among these:
+`Tibert` is a transformers-compatible reproduction from the paper [End-to-end Neural Coreference Resolution](https://aclanthology.org/D17-1018/) with several modifications. Among these:
 
 - Usage of BERT (or any BERT variant) as an encoder as in [BERT for Coreference Resolution: Baselines and Analysis](https://aclanthology.org/D19-1588/)
 - batch size can be greater than 1
@@ -31,11 +31,11 @@ model = BertForCoreferenceResolution.from_pretrained(
 )
 tokenizer = BertTokenizerFast.from_pretrained("bert-base-cased")
 
-coref_out = predict_coref_simple(
+annotated_doc = predict_coref_simple(
     "Sli did not want the earpods. He didn't like them.", model, tokenizer
 )
 
-pprint_coreference_document(coref_out)
+pprint_coreference_document(annotated_doc)
 ```
 
 results in:
