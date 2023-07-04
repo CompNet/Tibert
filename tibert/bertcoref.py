@@ -190,7 +190,7 @@ class CoreferenceDocument:
             new_chain = []
             for mention in chain:
                 new_start_idx = wp_to_token[mention.start_idx]
-                new_end_idx = wp_to_token[mention.end_idx]
+                new_end_idx = wp_to_token[mention.end_idx - 1] + 1
                 new_chain.append(
                     Mention(
                         tokens[new_start_idx:new_end_idx],
@@ -657,7 +657,7 @@ class BertCoreferenceResolutionOutput:
                 top_antecedent_idx = int(antecedents_idx[b_i][m_j].item())
 
                 span_mention = Mention(
-                    tokens[b_i][span_coords[0] : span_coords[1] + 1],
+                    tokens[b_i][span_coords[0] : span_coords[1]],
                     span_coords[0],
                     span_coords[1],
                 )
@@ -676,7 +676,7 @@ class BertCoreferenceResolutionOutput:
                 antecedent_coords = spans_idx[antecedent_idx]
 
                 antecedent_mention = Mention(
-                    tokens[b_i][antecedent_coords[0] : antecedent_coords[1] + 1],
+                    tokens[b_i][antecedent_coords[0] : antecedent_coords[1]],
                     antecedent_coords[0],
                     antecedent_coords[1],
                 )
