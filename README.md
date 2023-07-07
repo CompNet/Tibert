@@ -74,6 +74,22 @@ results in:
 `>>> (0 Princess Liana ) felt sad , because (1 Zarth Arn ) was gone . (0 The princess) went to sleep .`
 
 
+## Using Coreference Chains
+
+The coreference chains predicted can be accessed using the `.coref_chains` attribute:
+
+```python
+annotated_doc = predict_coref_simple(
+    "Princess Liana felt sad, because Zarth Arn was gone. The princess went to sleep.",
+    model,
+    tokenizer
+)
+print(annotated_doc.coref_chains)
+```
+
+`>>>[[Mention(tokens=['The', 'princess'], start_idx=11, end_idx=13), Mention(tokens=['Princess', 'Liana'], start_idx=0, end_idx=2)], [Mention(tokens=['Zarth', 'Arn'], start_idx=6, end_idx=8)]]`
+
+
 ## Training a model
 
 Aside from the `tibert.train.train_coref_model` function, it is possible to train a model from the command line. Training a model requires installing the `sacred` library. Here is the most basic example:
