@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Literal, List
+from typing import TYPE_CHECKING, Literal, List, Union, cast
 from transformers import PreTrainedTokenizerFast
 import torch
 from tqdm import tqdm
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 def predict_coref(
-    documents: List[str],
+    documents: List[Union[str, List[str]]],
     model: BertForCoreferenceResolution,
     tokenizer: PreTrainedTokenizerFast,
     batch_size: int = 1,
@@ -24,14 +24,15 @@ def predict_coref(
 ) -> List[CoreferenceDocument]:
     """Predict coreference chains for a list of documents.
 
-    :param documents: A list of tokenized documents.
+    :param documents: A list of documents, tokenized or not.  If
+        documents are not tokenized, MosesTokenizer will tokenize them
+        automatically.
     :param tokenizer:
     :param batch_size:
-    :param quiet: If ``True``, will report progress using
-        ``tqdm``.
+    :param quiet: If ``True``, will report progress using ``tqdm``.
 
     :return: a list of ``CoreferenceDocument``, with annotated
-                coreference chains.
+             coreference chains.
     """
     from tibert import (
         CoreferenceDataset,
@@ -43,10 +44,18 @@ def predict_coref(
         device_str = "cuda" if torch.cuda.is_available() else "cpu"
     device = torch.device(device_str)
 
-    m_tokenizer = MosesTokenizer(lang="en")
-    tokenized_documents = [
-        m_tokenizer.tokenize(text, escape=False) for text in documents
-    ]
+    if len(documents) == 0:
+        return []
+
+    # Tokenized input sentence if needed
+    if isinstance(documents[0], str):
+        m_tokenizer = MosesTokenizer(lang="en")
+        tokenized_documents = [
+            m_tokenizer.tokenize(text, escape=False) for text in documents
+        ]
+    else:
+        tokenized_documents = documents
+    tokenized_documents = cast(List[List[str]], tokenized_documents)
 
     dataset = CoreferenceDataset(
         [CoreferenceDocument(doc, []) for doc in tokenized_documents],
@@ -93,7 +102,10 @@ def predict_coref(
 
 
 def predict_coref_simple(
-    text: str, model, tokenizer, device_str: Literal["cpu", "cuda", "auto"] = "auto"
+    text: Union[str, List[str]],
+    model,
+    tokenizer,
+    device_str: Literal["cpu", "cuda", "auto"] = "auto",
 ) -> CoreferenceDocument:
     annotated_docs = predict_coref(
         [text], model, tokenizer, batch_size=1, device_str=device_str, quiet=True
