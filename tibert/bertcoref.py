@@ -569,6 +569,15 @@ def load_litbank_dataset(
     )
 
 
+def load_fr_litbank_dataset(
+    root_path: str, tokenizer: PreTrainedTokenizerFast, max_span_size: int
+):
+    root_path = os.path.expanduser(root_path.rstrip("/"))
+    return CoreferenceDataset.from_sacr_dir(
+        f"{root_path}/sacr/All_Entites", tokenizer, max_span_size, "en"
+    )
+
+
 def _ontonotes_split_line(line: str) -> List[str]:
     """
     >>> _ontonotes_split_line("in <COREF ...><COREF ...>Hong Kong</COREF> airport</COREF>")

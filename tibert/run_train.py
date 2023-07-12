@@ -1,4 +1,4 @@
-from typing import cast
+from typing import Literal, cast
 import os
 from transformers import BertTokenizerFast  # type: ignore
 from sacred.experiment import Experiment
@@ -6,6 +6,7 @@ from sacred.run import Run
 from sacred.commands import print_config
 from tibert import (
     load_litbank_dataset,
+    load_fr_litbank_dataset,
     BertForCoreferenceResolution,
     train_coref_model,
 )
@@ -17,7 +18,8 @@ ex = Experiment()
 def config():
     batch_size: int = 1
     epochs_nb: int = 30
-    # only supports litbank for now
+    # either "litbank" or "fr-litbank"
+    dataset_name: str = "litbank"
     dataset_path: str = os.path.expanduser("~/litbank")
     mentions_per_tokens: float = 0.4
     antecedents_nb: int = 350
@@ -38,6 +40,7 @@ def main(
     _run: Run,
     batch_size: int,
     epochs_nb: int,
+    dataset_name: Literal["litbank", "fr-litbank"],
     dataset_path: str,
     mentions_per_tokens: float,
     antecedents_nb: int,
@@ -70,7 +73,12 @@ def main(
     tokenizer = BertTokenizerFast.from_pretrained("bert-base-cased")  # type: ignore
     tokenizer = cast(BertTokenizerFast, tokenizer)
 
-    dataset = load_litbank_dataset(dataset_path, tokenizer, max_span_size)
+    if dataset_name == "litbank":
+        dataset = load_litbank_dataset(dataset_path, tokenizer, max_span_size)
+    elif dataset_name == "fr-litbank":
+        dataset = load_fr_litbank_dataset(dataset_path, tokenizer, max_span_size)
+    else:
+        raise ValueError
 
     model = train_coref_model(
         model,
@@ -88,5 +96,4 @@ def main(
 
 
 if __name__ == "__main__":
-
     ex.run_commandline()

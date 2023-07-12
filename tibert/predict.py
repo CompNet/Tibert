@@ -21,6 +21,7 @@ def predict_coref(
     batch_size: int = 1,
     quiet: bool = False,
     device_str: Literal["cpu", "cuda", "auto"] = "auto",
+    lang: str = "en",
 ) -> List[CoreferenceDocument]:
     """Predict coreference chains for a list of documents.
 
@@ -30,6 +31,7 @@ def predict_coref(
     :param tokenizer:
     :param batch_size:
     :param quiet: If ``True``, will report progress using ``tqdm``.
+    :param lang: lang for ``MosesTokenizer``
 
     :return: a list of ``CoreferenceDocument``, with annotated
              coreference chains.
@@ -49,7 +51,7 @@ def predict_coref(
 
     # Tokenized input sentence if needed
     if isinstance(documents[0], str):
-        m_tokenizer = MosesTokenizer(lang="en")
+        m_tokenizer = MosesTokenizer(lang=lang)
         tokenized_documents = [
             m_tokenizer.tokenize(text, escape=False) for text in documents
         ]
@@ -73,9 +75,7 @@ def predict_coref(
     preds = []
 
     with torch.no_grad():
-
         for i, batch in enumerate(tqdm(dataloader, disable=quiet)):
-
             local_batch_size = batch["input_ids"].shape[0]
 
             start_idx = batch_size * i
@@ -106,8 +106,15 @@ def predict_coref_simple(
     model,
     tokenizer,
     device_str: Literal["cpu", "cuda", "auto"] = "auto",
+    lang: str = "en",
 ) -> CoreferenceDocument:
     annotated_docs = predict_coref(
-        [text], model, tokenizer, batch_size=1, device_str=device_str, quiet=True
+        [text],
+        model,
+        tokenizer,
+        batch_size=1,
+        device_str=device_str,
+        quiet=True,
+        lang=lang,
     )
     return annotated_docs[0]
