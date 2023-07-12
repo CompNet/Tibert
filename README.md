@@ -106,6 +106,7 @@ The following parameters can be set (taken from `./tibert/run_train.py` config f
 |------------------------------|---------------------|
 | `batch_size`                 | `1`                 |
 | `epochs_nb`                  | `30`                |
+| `dataset_name`               | `"litbank"`         |
 | `dataset_path`               | `"~/litbank"`       |
 | `mentions_per_tokens`        | `0.4`               |
 | `antecedents_nb`             | `350`               |
