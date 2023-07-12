@@ -4,6 +4,7 @@ import re, glob, os
 from collections import defaultdict
 from pathlib import Path
 from dataclasses import dataclass
+from sacremoses import MosesTokenizer
 from more_itertools.recipes import flatten
 import torch
 from torch.nn.parameter import Parameter
@@ -222,7 +223,6 @@ class CoreferenceDocument:
         already_visited_mentions = []
 
         for i, mlabels in enumerate(coref_labels):
-
             if mlabels[-1] == 1:
                 # singleton cluster
                 if mention_labels[i] == 1:
@@ -241,7 +241,6 @@ class CoreferenceDocument:
             chain = [Mention(mention_tokens, start_idx, end_idx)]
 
             for j, label in enumerate(mlabels):
-
                 if label == 0:
                     continue
 
@@ -271,7 +270,6 @@ class DataCollatorForSpanClassification(DataCollatorMixin):
     return_tensors: Literal["pt"] = "pt"
 
     def torch_call(self, features) -> Union[dict, BatchEncoding]:
-
         coref_labels = (
             [feature["coref_labels"] for feature in features]
             if "coref_labels" in features[0].keys()
@@ -373,9 +371,7 @@ class CoreferenceDataset(Dataset):
         open_mentions: Dict[str, List[int]] = {}
 
         with open(path) as f:
-
             for line in f:
-
                 line = line.rstrip("\n")
 
                 if line.startswith("null") or re.fullmatch(r"\W*", line):
@@ -417,7 +413,6 @@ class CoreferenceDataset(Dataset):
 
                 coref_datas_list = splitted[corefs_split_idx].split("|")
                 for coref_datas in coref_datas_list:
-
                     mention_is_starting = coref_datas.find("(") != -1
                     mention_is_ending = coref_datas.find(")") != -1
                     try:
@@ -442,6 +437,80 @@ class CoreferenceDataset(Dataset):
                         document_chains[chain_id] = document_chains.get(
                             chain_id, []
                         ) + [mention]
+
+        return CoreferenceDataset(documents, tokenizer, max_span_size)
+
+    @staticmethod
+    def from_sacr_dir(
+        path: str,
+        tokenizer: PreTrainedTokenizerFast,
+        max_span_size: int,
+        lang: str,
+        **kwargs,
+    ) -> CoreferenceDataset:
+        """
+        :param path: path to a directory containing .sacr files
+        :param tokenizer:
+        :param max_span_size:
+        :param lang: MosesTokenizer language ('en', 'fr', 'de'...)
+        :param kwargs: passed to ``open``
+        """
+        path = os.path.expanduser(path)
+
+        documents = []
+        m_tokenizer = MosesTokenizer(lang=lang)
+
+        for fpath in tqdm(glob.glob(f"{path}/*.sacr")):
+            with open(fpath, **kwargs) as f:
+                text = f.read().replace("\n", " ")
+
+                def parse(text: str) -> Tuple[List[str], Dict[str, List[Mention]]]:
+                    splitted = re.split(r"({T[0-9]+:EN=\".*?\" [^{]*})", text)
+
+                    if len(splitted) == 1:
+                        return m_tokenizer.tokenize(text, escape=False), {}
+
+                    tokens: List[str] = []
+                    # { id => chain }
+                    chains: Dict[str, List[Mention]] = defaultdict(list)
+
+                    # SACR format example:
+                    # {T109:EN="p PER" Le nouveau-né} s’agite dans {T109:EN="p PER" son} berceau.
+                    #
+                    # split the text using a pattern that matches text
+                    # between braces. The text variable has,
+                    # alternatively, either the text between braces or
+                    # regulare text.
+                    for i, text in enumerate(splitted):
+                        # regular text
+                        if i % 2 == 0:
+                            text_tokens = m_tokenizer.tokenize(text, escape=False)
+                            tokens += text_tokens
+                            # text inside braces represents a coreference mention
+                        else:
+                            text_match = re.search(r"{T([0-9]+):EN=\".*?\" (.*)}", text)
+                            assert not text_match is None
+                            text_tokens, subchains = parse(text_match.group(2))
+
+                            for chain_key, mentions in subchains.items():
+                                chains[chain_key] += [
+                                    m.shifted(len(tokens)) for m in mentions
+                                ]
+
+                            chains[text_match.group(1)].append(
+                                Mention(
+                                    text_tokens,
+                                    len(tokens),
+                                    len(tokens) + len(text_tokens),
+                                )
+                            )
+
+                            tokens += text_tokens
+
+                    return tokens, chains
+
+                tokens, chains = parse(text)
+                documents.append(CoreferenceDocument(tokens, list(chains.values())))
 
         return CoreferenceDataset(documents, tokenizer, max_span_size)
 
@@ -547,7 +616,6 @@ def load_ontonotes_document(document_path: Path) -> Optional[CoreferenceDocument
     doc_tokens = []
 
     for line in lines:
-
         # * Parsing line coreference chains and tokens
         line_tokens = []
         line_chains = defaultdict(list)
@@ -616,7 +684,6 @@ def load_ontonotes_dataset(
 
 @dataclass
 class BertCoreferenceResolutionOutput:
-
     # (batch_size, top_mentions_nb, antecedents_nb)
     logits: torch.Tensor
 
@@ -650,14 +717,12 @@ class BertCoreferenceResolutionOutput:
         documents = []
 
         for b_i in range(batch_size):
-
             spans_idx = spans_indexs(tokens[b_i], self.max_span_size)
 
             import networkx as nx
 
             G = nx.Graph()
             for m_j in range(top_mentions_nb):
-
                 span_idx = int(self.top_mentions_index[b_i][m_j].item())
                 span_coords = spans_idx[span_idx]
 
@@ -864,7 +929,6 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
         for b_i in range(batch_size):
             mention_indexs.append([])
             for s_j in range(spans_nb):
-
                 if len(mention_indexs[-1]) >= top_mentions_nb:
                     break
 
@@ -1217,7 +1281,6 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
         # -- loss computation --
         loss = None
         if coref_labels is not None and mention_labels is not None:
-
             # -- coref loss
             selected_coref_labels = batch_index_select(
                 coref_labels, 1, top_mentions_index
@@ -1300,9 +1363,7 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
         preds = []
 
         with torch.no_grad():
-
             for i, batch in enumerate(tqdm(dataloader, disable=quiet)):
-
                 local_batch_size = batch["input_ids"].shape[0]
 
                 start_idx = batch_size * i
