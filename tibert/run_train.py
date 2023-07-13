@@ -1,6 +1,6 @@
 from typing import Literal, cast
 import os
-from transformers import BertTokenizerFast  # type: ignore
+from transformers import BertTokenizerFast, CamembertTokenizerFast  # type: ignore
 from sacred.experiment import Experiment
 from sacred.run import Run
 from sacred.commands import print_config
@@ -8,6 +8,7 @@ from tibert import (
     load_litbank_dataset,
     load_fr_litbank_dataset,
     BertForCoreferenceResolution,
+    CamembertForCoreferenceResolution,
     train_coref_model,
 )
 
@@ -57,7 +58,25 @@ def main(
 ):
     print_config(_run)
 
-    model = BertForCoreferenceResolution.from_pretrained(
+    dataset_configs = {
+        "litbank": {
+            "model_class": BertForCoreferenceResolution,
+            "tokenizer_class": BertTokenizerFast,
+            "loading_function": load_litbank_dataset,
+        },
+        "fr-litbank": {
+            "model_class": CamembertForCoreferenceResolution,
+            "tokenizer_class": CamembertTokenizerFast,
+            "loading_function": load_fr_litbank_dataset,
+        },
+    }
+
+    if not dataset_name in dataset_configs:
+        raise ValueError(f"unknown dataset: {dataset_name}")
+
+    config = dataset_configs[dataset_name]
+
+    model = config["model_class"].from_pretrained(
         encoder,
         mentions_per_tokens,
         antecedents_nb,
@@ -70,15 +89,9 @@ def main(
         mention_loss_coeff=mention_loss_coeff,
     )
 
-    tokenizer = BertTokenizerFast.from_pretrained("bert-base-cased")  # type: ignore
-    tokenizer = cast(BertTokenizerFast, tokenizer)
+    tokenizer = config["tokenizer_class"].from_pretrained("bert-base-cased")
 
-    if dataset_name == "litbank":
-        dataset = load_litbank_dataset(dataset_path, tokenizer, max_span_size)
-    elif dataset_name == "fr-litbank":
-        dataset = load_fr_litbank_dataset(dataset_path, tokenizer, max_span_size)
-    else:
-        raise ValueError
+    dataset = config["loading_function"](dataset_path, tokenizer, max_span_size)
 
     model = train_coref_model(
         model,
