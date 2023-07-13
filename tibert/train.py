@@ -28,11 +28,6 @@ def train_coref_model(
     task_lr: float = 2e-4,
     _run: Optional["sacred.run.Run"] = None,
 ) -> BertForCoreferenceResolution:
-    if _run:
-        from sacred.commands import print_config
-
-        print_config(_run)
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     train_dataset = CoreferenceDataset(
