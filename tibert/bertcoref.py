@@ -16,6 +16,8 @@ from transformers.file_utils import PaddingStrategy
 from transformers.data.data_collator import DataCollatorMixin
 from transformers.models.bert.modeling_bert import BertModel
 from transformers.models.bert.configuration_bert import BertConfig
+from transformers.models.camembert.modeling_camembert import CamembertModel
+from transformers.models.camembert.configuration_camembert import CamembertConfig
 from transformers.tokenization_utils_base import BatchEncoding, PreTrainedTokenizerBase
 from tqdm import tqdm
 from tibert.utils import spans_indexs, batch_index_select, spans
@@ -1398,3 +1400,81 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
                 preds += out_docs
 
         return preds
+
+
+class CamembertForCoreferenceResolutionConfig(CamembertConfig):
+    def __init__(
+        self,
+        mentions_per_tokens: float = 0.4,
+        antecedents_nb: int = 300,
+        max_span_size: int = 10,
+        segment_size: int = 128,
+        mention_scorer_hidden_size: int = 3000,
+        mention_scorer_dropout: float = 0.1,
+        metadatas_features_size: int = 20,
+        mention_loss_coeff: float = 0.1,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.mentions_per_tokens = mentions_per_tokens
+        self.antecedents_nb = antecedents_nb
+        self.max_span_size = max_span_size
+        self.segment_size = segment_size
+        self.mention_scorer_hidden_size = mention_scorer_hidden_size
+        self.mention_scorer_dropout = mention_scorer_dropout
+        self.metadatas_features_size = metadatas_features_size
+        self.mention_loss_coeff = mention_loss_coeff
+
+
+class CamembertForCoreferenceResolution(CamembertModel, BertForCoreferenceResolution):
+    """CamemBERT for Coreference Resolution
+
+    .. note ::
+
+        We use the following short notation to annotate shapes :
+
+        - b: batch_size
+        - s: seq_size
+        - p: spans_nb
+        - m: top_mentions_nb
+        - a: antecedents_nb
+        - h: hidden_size
+        - t: metadatas_features_size
+    """
+
+    config_class = CamembertForCoreferenceResolutionConfig
+
+    def __init__(self, config: CamembertForCoreferenceResolutionConfig, **kwargs):
+        super().__init__(config, **kwargs)
+        self.config = config
+
+        self.bert = CamembertModel(config, add_pooling_layer=False)
+
+        self.mention_scorer_dropout = torch.nn.Dropout(
+            p=self.config.mention_scorer_dropout
+        )
+
+        self.mention_scorer_hidden = torch.nn.Linear(
+            2 * config.hidden_size, self.config.mention_scorer_hidden_size
+        )
+        self.mention_scorer = torch.nn.Linear(self.config.mention_scorer_hidden_size, 1)
+
+        self.dist_bucket_embedding = torch.nn.Embedding(
+            len(BertForCoreferenceResolution.DIST_BUCKETS) + 1,
+            self.config.metadatas_features_size,
+        )
+
+        self.mention_compatibility_scorer_hidden = torch.nn.Linear(
+            4 * config.hidden_size + self.config.metadatas_features_size,
+            self.config.mention_scorer_hidden_size,
+        )
+        self.mention_compatibility_scorer = torch.nn.Linear(
+            self.config.mention_scorer_hidden_size, 1
+        )
+
+        self.mention_loss_coeff = self.config.mention_loss_coeff
+
+        self.post_init()
+
+    def forward(self, *args, **kwargs) -> BertCoreferenceResolutionOutput:
+        return BertForCoreferenceResolution.forward(self, *args, **kwargs)
