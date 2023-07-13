@@ -78,9 +78,9 @@ def main(
 
     model = config["model_class"].from_pretrained(
         encoder,
-        mentions_per_tokens,
-        antecedents_nb,
-        max_span_size,
+        mentions_per_tokens=mentions_per_tokens,
+        antecedents_nb=antecedents_nb,
+        max_span_size=max_span_size,
         segment_size=segment_size,
         mention_scorer_hidden_size=mention_scorer_hidden_size,
         mention_scorer_dropout=dropout,
@@ -89,7 +89,7 @@ def main(
         mention_loss_coeff=mention_loss_coeff,
     )
 
-    tokenizer = config["tokenizer_class"].from_pretrained("bert-base-cased")
+    tokenizer = config["tokenizer_class"].from_pretrained(encoder)
 
     dataset = config["loading_function"](dataset_path, tokenizer, max_span_size)
 
