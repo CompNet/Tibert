@@ -28,7 +28,6 @@ def train_coref_model(
     task_lr: float = 2e-4,
     _run: Optional["sacred.run.Run"] = None,
 ) -> BertForCoreferenceResolution:
-
     if _run:
         from sacred.commands import print_config
 
@@ -65,7 +64,9 @@ def train_coref_model(
         )
     )
 
-    data_collator = DataCollatorForSpanClassification(tokenizer, model.max_span_size)
+    data_collator = DataCollatorForSpanClassification(
+        tokenizer, model.config.max_span_size
+    )
     train_dataloader = DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True, collate_fn=data_collator
     )
@@ -90,14 +91,12 @@ def train_coref_model(
     model = model.to(device)
 
     for epoch_i in range(epochs_nb):
-
         model = model.train()
 
         epoch_losses = []
 
         data_tqdm = tqdm(train_dataloader)
         for batch in data_tqdm:
-
             batch = batch.to(device)
 
             optimizer.zero_grad()
@@ -127,14 +126,11 @@ def train_coref_model(
         model = model.eval()
 
         with torch.no_grad():
-
             try:
-
                 preds = []
                 losses = []
 
                 for batch in tqdm(test_dataloader):
-
                     local_batch_size = batch["input_ids"].shape[0]
                     batch = batch.to(device)
                     out: BertCoreferenceResolutionOutput = model(**batch)
@@ -152,9 +148,9 @@ def train_coref_model(
                 _ = _run and _run.log_scalar("epoch_mean_test_loss", mean(losses))
 
                 refs = [
-                    doc.prepared_document(test_dataset.tokenizer, model.max_span_size)[
-                        0
-                    ]
+                    doc.prepared_document(
+                        test_dataset.tokenizer, model.config.max_span_size
+                    )[0]
                     for doc in test_dataset.documents
                 ]
                 metrics = score_coref_predictions(preds, refs)
