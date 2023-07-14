@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Optional
+from typing import Optional, Union
 import traceback
 from statistics import mean
 from more_itertools.recipes import flatten
@@ -9,6 +9,7 @@ from tqdm import tqdm
 from tibert import (
     BertForCoreferenceResolution,
     BertCoreferenceResolutionOutput,
+    CamembertForCoreferenceResolution,
     CoreferenceDataset,
     split_coreference_document,
     DataCollatorForSpanClassification,
@@ -18,7 +19,7 @@ from tibert.utils import gpu_memory_usage
 
 
 def train_coref_model(
-    model: BertForCoreferenceResolution,
+    model: Union[BertForCoreferenceResolution, CamembertForCoreferenceResolution],
     dataset: CoreferenceDataset,
     tokenizer: BertTokenizerFast,
     batch_size: int = 1,

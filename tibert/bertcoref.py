@@ -1480,4 +1480,4 @@ class CamembertForCoreferenceResolution(CamembertModel, BertForCoreferenceResolu
         return BertForCoreferenceResolution.forward(self, *args, **kwargs)
 
     def to(self, device, *args, **kwargs) -> BertForCoreferenceResolution:
-        return BertForCoreferenceResolution.to(self, *args, **kwargs)
+        return BertForCoreferenceResolution.to(self, device, *args, **kwargs)
