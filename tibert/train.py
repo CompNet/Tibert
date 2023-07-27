@@ -1,5 +1,5 @@
 from typing import Optional, Union
-import traceback
+import traceback, copy
 from statistics import mean
 from more_itertools.recipes import flatten
 import torch
@@ -175,7 +175,7 @@ def train_coref_model(
                 model_f1 = 0
 
             if model_f1 > best_f1 or best_f1 == 0:
-                best_model = model.to("cpu")
+                best_model = copy.deepcopy(model).to("cpu")
                 best_f1 = model_f1
 
     return best_model
