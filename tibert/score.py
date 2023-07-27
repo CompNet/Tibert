@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Dict, List, Literal, Callable, Set, Tuple
 from statistics import mean
+import numpy as np
 from tibert.utils import spans_indexs
 
 if TYPE_CHECKING:
@@ -43,7 +44,6 @@ def score_coref_predictions(
         clusters = {}
 
         for chain_i, chain in enumerate(doc.coref_chains):
-
             clusters[chain_i] = set(
                 [
                     spans_idxs.index((mention.start_idx, mention.end_idx))
