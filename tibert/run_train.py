@@ -102,6 +102,7 @@ def main(
         sents_per_documents_train,
         bert_lr,
         task_lr,
+        out_model_path,
         _run,
     )
 

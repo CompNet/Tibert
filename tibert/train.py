@@ -27,6 +27,7 @@ def train_coref_model(
     sents_per_documents_train: int = 11,
     bert_lr: float = 1e-5,
     task_lr: float = 2e-4,
+    model_save_path: Optional[str] = None,
     _run: Optional["sacred.run.Run"] = None,
 ) -> BertForCoreferenceResolution:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -176,6 +177,8 @@ def train_coref_model(
 
             if model_f1 > best_f1 or best_f1 == 0:
                 best_model = copy.deepcopy(model).to("cpu")
+                if not model_save_path is None:
+                    best_model.save_pretrained(model_save_path)
                 best_f1 = model_f1
 
     return best_model
