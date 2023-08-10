@@ -154,7 +154,9 @@ class CoreferenceDocument:
                     start_idx = words_ids.index(mention.start_idx)
                     # end_idx is the index of the last word-piece corresponding
                     # to the word at its original end index.
-                    end_idx = len(words_ids) - 1 - r_words_ids.index(mention.end_idx)
+                    end_idx = (
+                        len(words_ids) - 1 - r_words_ids.index(mention.end_idx - 1)
+                    )
                 # ValueError : mention.start_idx or mention.end_idx
                 # was not in word_ids due to truncation : this mention
                 # is discarded

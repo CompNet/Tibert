@@ -22,6 +22,10 @@ neleval = "^3.1.1"
 rich = "^13.4.2"
 sacremoses = "^0.0.53"
 
+[tool.poetry.group.dev.dependencies]
+hypothesis = "^6.82.3"
+pytest = "^7.4.0"
+
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
