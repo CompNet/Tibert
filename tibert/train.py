@@ -55,7 +55,7 @@ def train_coref_model(
         flatten(
             [
                 # HACK: test on full documents
-                split_coreference_document(doc, 200)
+                split_coreference_document(doc, 11)
                 for doc in test_dataset.documents
             ]
         )
