@@ -25,7 +25,7 @@ def spans(seq: Collection[T], max_len: int) -> List[Tuple[T]]:
     :return:
     """
     out_spans = []
-    for i in range(1, min(len(seq), max_len + 1)):
+    for i in range(1, min(len(seq) + 1, max_len + 1)):
         for span in windowed(seq, i):
             out_spans.append(span)
     return out_spans
