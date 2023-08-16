@@ -178,11 +178,13 @@ class CoreferenceDocument:
     def from_wpieced_to_tokenized(
         self, tokens: List[str], batch: BatchEncoding, batch_idx: int
     ) -> CoreferenceDocument:
-        """Convert the current document, tokenized with wordpieces, to a document 'normally' tokenized
+        """Convert the current document, tokenized with wordpieces, to
+        a document 'normally' tokenized
 
         :param tokens: the original tokens
         :param batch:
         :param batch_idx:
+
         :return:
         """
         seq_size = batch["input_ids"].shape[1]  # type: ignore
@@ -190,19 +192,38 @@ class CoreferenceDocument:
             batch.token_to_word(batch_idx, token_index=i) for i in range(seq_size)
         ]
 
+        # In some cases, output mentions can be produced several
+        # times. This can happen when a mention boundary is expressed
+        # by several wordpiece (for example the wordpiece mentions :
+        # "l ' abbé" and "l '" can both correspond to the regular
+        # mention "l 'abbé". For those cases, we keep only one choice
+        # and assume that predictions for these mentions are
+        # consistent.
+        already_visited_mentions = set()
+
         new_chains = []
+
         for chain in self.coref_chains:
+
             new_chain = []
+
             for mention in chain:
+
                 new_start_idx = wp_to_token[mention.start_idx]
                 new_end_idx = wp_to_token[mention.end_idx - 1] + 1
-                new_chain.append(
-                    Mention(
-                        tokens[new_start_idx:new_end_idx],
-                        new_start_idx,
-                        new_end_idx,
-                    )
+                new_mention = Mention(
+                    tokens[new_start_idx:new_end_idx],
+                    new_start_idx,
+                    new_end_idx,
                 )
+
+                if new_mention in already_visited_mentions:
+                    continue
+
+                new_chain.append(new_mention)
+
+                already_visited_mentions.add(new_mention)
+
             new_chains.append(new_chain)
 
         return CoreferenceDocument(tokens, new_chains)
