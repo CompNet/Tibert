@@ -149,4 +149,4 @@ The following table presents the results we obtained by training this model (for
 
 | Dataset | Base model        | MUC   | B3    | CEAF  | CoNLL F1 |
 |---------|-------------------|-------|-------|-------|----------|
-| Litbank | `bert-base-cased` | 75.13 | 67.63 | 56.66 | 67.21    |
+| Litbank | `bert-base-cased` | 77.35 | 67.63 | 56.66 | 67.21    |
