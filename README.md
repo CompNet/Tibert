@@ -144,9 +144,9 @@ Several work make use of additional features. For now, only the distance between
 
 The following table presents the results we obtained by training this model (for now, it has only one entry !). Note that:
 
-- the reported result was obtained with a limitation were documents are truncated to 512 tokens, so they may not be accurate with the performance on full documents
+- the reported results were obtained by splitting documents for performance reasons, with subdocuments having a maximum length of 11 sentences. They may not be accurate with the performance on full documents
 - the reported results can not be directly compared to the performance in [the original Litbank paper](https://arxiv.org/abs/1912.01140) since we only compute performance on one split of the datas
 
 | Dataset | Base model        | MUC   | B3    | CEAF  | CoNLL F1 |
 |---------|-------------------|-------|-------|-------|----------|
-| Litbank | `bert-base-cased` | 75.49 | 65.69 | 55.56 | 65.58    |
+| Litbank | `bert-base-cased` | 75.13 | 67.63 | 56.66 | 67.21    |
