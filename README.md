@@ -144,6 +144,7 @@ Several work make use of additional features. For now, only the distance between
 
 The following table presents the results we obtained by training this model (for now, it has only one entry !). Note that:
 
+- the reported results use `max_span_size=5` instead of `max_span_size=10` as in training.
 - the reported results were obtained by splitting documents for performance reasons, with subdocuments having a maximum length of 11 sentences. They may not be accurate with the performance on full documents
 - the reported results can not be directly compared to the performance in [the original Litbank paper](https://arxiv.org/abs/1912.01140) since we only compute performance on one split of the datas
 
