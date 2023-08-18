@@ -4,7 +4,7 @@ from statistics import mean
 from more_itertools.recipes import flatten
 import torch
 from torch.utils.data.dataloader import DataLoader
-from transformers import BertTokenizerFast  # type: ignore
+from transformers import BertTokenizerFast, CamembertTokenizerFast  # type: ignore
 from tqdm import tqdm
 from tibert import (
     BertForCoreferenceResolution,
@@ -14,6 +14,7 @@ from tibert import (
     split_coreference_document,
     DataCollatorForSpanClassification,
     score_coref_predictions,
+    score_mention_detection,
 )
 from tibert.utils import gpu_memory_usage
 
@@ -21,7 +22,7 @@ from tibert.utils import gpu_memory_usage
 def train_coref_model(
     model: Union[BertForCoreferenceResolution, CamembertForCoreferenceResolution],
     dataset: CoreferenceDataset,
-    tokenizer: BertTokenizerFast,
+    tokenizer: Union[BertTokenizerFast, CamembertTokenizerFast],
     batch_size: int = 1,
     epochs_nb: int = 30,
     sents_per_documents_train: int = 11,
@@ -150,8 +151,11 @@ def train_coref_model(
                     )[0]
                     for doc in test_dataset.documents
                 ]
-                metrics = score_coref_predictions(preds, refs)
 
+                metrics = score_coref_predictions(preds, refs)
+                conll_f1 = mean(
+                    [metrics["MUC"]["f1"], metrics["B3"]["f1"], metrics["CEAF"]["f1"]]
+                )
                 if _run:
                     _run.log_scalar("muc_precision", metrics["MUC"]["precision"])
                     _run.log_scalar("muc_recall", metrics["MUC"]["recall"])
@@ -162,23 +166,27 @@ def train_coref_model(
                     _run.log_scalar("ceaf_precision", metrics["CEAF"]["precision"])
                     _run.log_scalar("ceaf_recall", metrics["CEAF"]["recall"])
                     _run.log_scalar("ceaf_f1", metrics["CEAF"]["f1"])
-
+                    _run.log_scalar("conll_f1", conll_f1)
                 print(metrics)
 
-                # keep the best model
-                model_f1 = mean(
-                    [metrics["MUC"]["f1"], metrics["B3"]["f1"], metrics["CEAF"]["f1"]]
+                m_precision, m_recall, m_f1 = score_mention_detection(preds, refs)
+                if _run:
+                    _run.log_scalar("mention_detection_precision", m_precision)
+                    _run.log_scalar("mention_detection_recall", m_recall)
+                    _run.log_scalar("mention_detection_f1", m_f1)
+                print(
+                    f"mention detection metrics: (precision: {m_precision}, recall: {m_recall}, f1: {m_f1})"
                 )
 
             except Exception as e:
                 print(e)
                 traceback.print_exc()
-                model_f1 = 0
+                conll_f1 = 0
 
-            if model_f1 > best_f1 or best_f1 == 0:
+            if conll_f1 > best_f1 or best_f1 == 0:
                 best_model = copy.deepcopy(model).to("cpu")
                 if not model_save_path is None:
                     best_model.save_pretrained(model_save_path)
-                best_f1 = model_f1
+                best_f1 = conll_f1
 
     return best_model

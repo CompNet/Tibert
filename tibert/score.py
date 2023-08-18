@@ -5,7 +5,7 @@ import numpy as np
 from tibert.utils import spans_indexs
 
 if TYPE_CHECKING:
-    from tibert.bertcoref import CoreferenceDocument
+    from tibert.bertcoref import CoreferenceDocument, Mention
 
 
 def score_coref_predictions(
@@ -133,3 +133,57 @@ def score_coref_predictions(
             "f1": mean(ceaf_f1s),
         },
     }
+
+
+def doc_mentions(doc: CoreferenceDocument) -> List[Mention]:
+    return [mention for chain in doc.coref_chains for mention in chain]
+
+
+def score_mention_detection(
+    preds: List[CoreferenceDocument], refs: List[CoreferenceDocument]
+) -> Tuple[float, float, float]:
+    """Compute mention detection precision, recall and F1.
+
+    :param preds: predictions
+    :param refs: references
+
+    :return: ``(precision, recall, f1)``
+    """
+    assert len(preds) > 0
+    assert len(refs) > 0
+
+    precision_l = []
+    recall_l = []
+    f1_l = []
+
+    for pred, ref in zip(preds, refs):
+
+        pred_mentions = doc_mentions(pred)
+        ref_mentions = doc_mentions(ref)
+
+        if len(pred_mentions) == 0:
+            continue
+        precision = len([m for m in pred_mentions if m in ref_mentions]) / len(
+            pred_mentions
+        )
+
+        if len(ref_mentions) == 0:
+            continue
+        recall = len([m for m in ref_mentions if m in pred_mentions]) / len(
+            ref_mentions
+        )
+
+        if precision + recall == 0:
+            continue
+
+        f1 = 2 * (precision * recall) / (precision + recall)
+
+        precision_l.append(precision)
+        recall_l.append(recall)
+        f1_l.append(f1)
+
+    if len(f1_l) == 0:
+        print("[warning] undefined F1 for all samples")
+        return (0.0, 0.0, 0.0)
+
+    return (mean(precision_l), mean(recall_l), mean(f1_l))
