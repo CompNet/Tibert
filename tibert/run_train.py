@@ -103,6 +103,7 @@ def main(
         bert_lr,
         task_lr,
         out_model_path,
+        "auto",
         _run,
     )
 

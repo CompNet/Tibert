@@ -151,3 +151,17 @@ The following table presents the results we obtained by training this model (for
 | Dataset | Base model        | MUC   | B3    | CEAF  | CoNLL F1 |
 |---------|-------------------|-------|-------|-------|----------|
 | Litbank | `bert-base-cased` | 77.35 | 67.63 | 56.66 | 67.21    |
+
+
+# Citation
+
+If you use this software in a research project, you can cite Tibert as follows:
+
+```bibtex
+@Misc{tibert,
+  author = {Amalvy, A. and Labatut, V. and Dufour, R.},
+  title = {Tibert},
+  year  = {2023},
+  url   = {https://github.com/CompNet/Tibert},
+}
+```
