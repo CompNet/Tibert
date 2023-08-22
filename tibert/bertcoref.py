@@ -485,7 +485,7 @@ class CoreferenceDataset(Dataset):
         documents = []
         m_tokenizer = MosesTokenizer(lang=lang)
 
-        for fpath in tqdm(glob.glob(f"{path}/*.sacr")):
+        for fpath in tqdm(sorted(glob.glob(f"{path}/*.sacr"))):
             with open(fpath, **kwargs) as f:
                 text = f.read().replace("\n", " ")
 
