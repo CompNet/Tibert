@@ -241,12 +241,8 @@ def train_coref_model(
 
         # Model saving
         # ------------
-        if conll_f1 > best_f1 or best_f1 == 0:
-            best_model = copy.deepcopy(model).to("cpu")
-            best_f1 = conll_f1
-            if not model_save_dir is None:
-                model.save_pretrained(os.path.join(model_save_dir, "model"))
         if not model_save_dir is None:
+            os.makedirs(model_save_dir, exist_ok=True)
             _save_train_checkpoint(
                 os.path.join(model_save_dir, "checkpoint.pth"),
                 model,
@@ -255,5 +251,10 @@ def train_coref_model(
                 bert_lr,
                 task_lr,
             )
+        if conll_f1 > best_f1 or best_f1 == 0:
+            best_model = copy.deepcopy(model).to("cpu")
+            best_f1 = conll_f1
+            if not model_save_dir is None:
+                model.save_pretrained(os.path.join(model_save_dir, "model"))
 
     return best_model
