@@ -210,7 +210,14 @@ class CoreferenceDocument:
             for mention in chain:
 
                 new_start_idx = wp_to_token[mention.start_idx]
-                new_end_idx = wp_to_token[mention.end_idx - 1] + 1
+                new_end_idx = wp_to_token[mention.end_idx - 1]
+                # NOTE: this happens in case the model has predicted
+                # an erroneous mention such as '[CLS]' or '[SEP]'. In
+                # that case, we simply ignore the mention.
+                if new_start_idx is None or new_end_idx is None:
+                    continue
+                new_end_idx += 1
+
                 new_mention = Mention(
                     tokens[new_start_idx:new_end_idx],
                     new_start_idx,
