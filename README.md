@@ -97,7 +97,7 @@ Aside from the `tibert.train.train_coref_model` function, it is possible to trai
 ```sh
 python -m tibert.run_train with\
        dataset_path=/path/to/litbank/repository\
-       out_model_path=/path/to/output/model/directory
+       out_model_dir=/path/to/output/model/directory
 ```
 
 The following parameters can be set (taken from `./tibert/run_train.py` config function):
@@ -119,7 +119,7 @@ The following parameters can be set (taken from `./tibert/run_train.py` config f
 | `dropout`                    | `0.3`               |
 | `segment_size`               | `128`               |
 | `encoder`                    | `"bert-base-cased"` |
-| `out_model_path`             | `"~/tibert/model"`  |
+| `out_model_dir`              | `"~/tibert/model"`  |
 
 
 One can monitor training metrics by adding run observers using command line flags - see `sacred` documentation for more details.

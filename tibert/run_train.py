@@ -1,5 +1,6 @@
-from typing import Literal, cast
+from typing import Literal, Optional, cast
 import os
+from torch.optim import optimizer
 from transformers import BertTokenizerFast, CamembertTokenizerFast  # type: ignore
 from sacred.experiment import Experiment
 from sacred.run import Run
@@ -10,6 +11,7 @@ from tibert import (
     BertForCoreferenceResolution,
     CamembertForCoreferenceResolution,
     train_coref_model,
+    load_train_checkpoint,
 )
 
 ex = Experiment()
@@ -33,7 +35,8 @@ def config():
     dropout: float = 0.3
     segment_size: int = 128
     encoder: str = "bert-base-cased"
-    out_model_path: str = os.path.expanduser("~/tibert/model")
+    out_model_dir: str = os.path.expanduser("~/tibert/model")
+    checkpoint: Optional[str] = None
 
 
 @ex.main
@@ -54,7 +57,8 @@ def main(
     dropout: float,
     segment_size: int,
     encoder: str,
-    out_model_path: str,
+    out_model_dir: str,
+    checkpoint: Optional[str],
 ):
     print_config(_run)
 
@@ -76,38 +80,41 @@ def main(
 
     config = dataset_configs[dataset_name]
 
-    model = config["model_class"].from_pretrained(
-        encoder,
-        mentions_per_tokens=mentions_per_tokens,
-        antecedents_nb=antecedents_nb,
-        max_span_size=max_span_size,
-        segment_size=segment_size,
-        mention_scorer_hidden_size=mention_scorer_hidden_size,
-        mention_scorer_dropout=dropout,
-        hidden_dropout_prob=dropout,
-        attention_probs_dropout_prob=dropout,
-        mention_loss_coeff=mention_loss_coeff,
-    )
+    if not checkpoint is None:
+        model, optimizer = load_train_checkpoint(checkpoint, config["model_class"])
+    else:
+        model = config["model_class"].from_pretrained(
+            encoder,
+            mentions_per_tokens=mentions_per_tokens,
+            antecedents_nb=antecedents_nb,
+            max_span_size=max_span_size,
+            segment_size=segment_size,
+            mention_scorer_hidden_size=mention_scorer_hidden_size,
+            mention_scorer_dropout=dropout,
+            hidden_dropout_prob=dropout,
+            attention_probs_dropout_prob=dropout,
+            mention_loss_coeff=mention_loss_coeff,
+        )
+        optimizer = None
 
     tokenizer = config["tokenizer_class"].from_pretrained(encoder)
 
     dataset = config["loading_function"](dataset_path, tokenizer, max_span_size)
 
-    model = train_coref_model(
+    train_coref_model(
         model,
         dataset,
         tokenizer,
-        batch_size,
-        epochs_nb,
-        sents_per_documents_train,
-        bert_lr,
-        task_lr,
-        out_model_path,
-        "auto",
-        _run,
+        batch_size=batch_size,
+        epochs_nb=epochs_nb,
+        sents_per_documents_train=sents_per_documents_train,
+        bert_lr=bert_lr,
+        task_lr=task_lr,
+        model_save_dir=out_model_dir,
+        device_str="auto",
+        _run=_run,
+        optimizer=optimizer,
     )
-
-    model.save_pretrained(out_model_path)
 
 
 if __name__ == "__main__":
