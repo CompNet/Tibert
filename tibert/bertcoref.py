@@ -19,6 +19,7 @@ from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.camembert.modeling_camembert import CamembertModel
 from transformers.models.camembert.configuration_camembert import CamembertConfig
 from transformers.tokenization_utils_base import BatchEncoding, PreTrainedTokenizerBase
+from transformers.utils import logging as transformers_logging
 from tqdm import tqdm
 from tibert.utils import spans_indexs, batch_index_select, spans
 
@@ -131,7 +132,14 @@ class CoreferenceDocument:
         """
         # (silly) exemple for the tokens ["I", "am", "PG"]
         # a BertTokenizer would produce ["[CLS]", "I", "am", "P", "##G", "[SEP]"]
-        batch = tokenizer(self.tokens, is_split_into_words=True, truncation=True)  # type: ignore
+        # NOTE: we disable tokenizer warning to avoid a length
+        # ----  warning. Usually, sequences should be truncated to a max
+        #       length (512 for BERT). However, in our case, the sequence is
+        #       later cut into segments of configurable size, so this does
+        #       not apply (see BertForCoreferenceResolutionConfig.segment_size)
+        transformers_logging.set_verbosity_error()
+        batch = tokenizer(self.tokens, is_split_into_words=True)
+        transformers_logging.set_verbosity_info()
         tokens = tokenizer.convert_ids_to_tokens(batch["input_ids"])  # type: ignore
 
         # words_ids is used to correspond post-tokenization word pieces
