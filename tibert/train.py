@@ -51,7 +51,7 @@ def load_train_checkpoint(
 
     model_config = config_class(**checkpoint["model_config"])
     model = model_class(model_config)
-    model.load_state_dict(checkpoint["model"])
+    model.load_state_dict(checkpoint["model"], strict=False)
 
     optimizer = torch.optim.AdamW(
         [
@@ -66,6 +66,17 @@ def load_train_checkpoint(
     optimizer.load_state_dict(checkpoint["optimizer"])
 
     return model, optimizer
+
+
+def _optimizer_to_(
+    optimizer: torch.optim.AdamW, device: torch.device
+) -> torch.optim.AdamW:
+    """From https://github.com/pytorch/pytorch/issues/2830"""
+    for state in optimizer.state.values():
+        for k, v in state.items():
+            if isinstance(v, torch.Tensor):
+                state[k] = v.cuda()
+    return optimizer
 
 
 def train_coref_model(
@@ -161,8 +172,8 @@ def train_coref_model(
             ],
             lr=task_lr,
         )
+    optimizer = _optimizer_to_(optimizer, device)
 
-    # Best model saving
     # -----------------
     best_f1 = 0
     best_model = model

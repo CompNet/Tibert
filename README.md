@@ -120,6 +120,7 @@ The following parameters can be set (taken from `./tibert/run_train.py` config f
 | `segment_size`               | `128`               |
 | `encoder`                    | `"bert-base-cased"` |
 | `out_model_dir`              | `"~/tibert/model"`  |
+| `checkpoint`                 | `None`              |
 
 
 One can monitor training metrics by adding run observers using command line flags - see `sacred` documentation for more details.
