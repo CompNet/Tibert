@@ -620,11 +620,11 @@ def load_fr_litbank_dataset(
 ):
     root_path = os.path.expanduser(root_path.rstrip("/"))
     return CoreferenceDataset.from_sacr_dir(
-        f"{root_path}/sacr/All_Entites",
+        f"{root_path}/sacr/Pers_Entites",
         tokenizer,
         max_span_size,
         "en",
-        ignored_files=["schema.sacr"],
+        ignored_files=["schema.sacr", "elisabeth_Seton.sacr"],
     )
 
 
