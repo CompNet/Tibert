@@ -486,6 +486,7 @@ class CoreferenceDataset(Dataset):
         tokenizer: PreTrainedTokenizerFast,
         max_span_size: int,
         lang: str,
+        ignored_files: Optional[List[str]] = None,
         **kwargs,
     ) -> CoreferenceDataset:
         """
@@ -493,6 +494,7 @@ class CoreferenceDataset(Dataset):
         :param tokenizer:
         :param max_span_size:
         :param lang: MosesTokenizer language ('en', 'fr', 'de'...)
+        :param ignored_files: list of filenames to ignore
         :param kwargs: passed to ``open``
         """
         path = os.path.expanduser(path)
@@ -500,7 +502,11 @@ class CoreferenceDataset(Dataset):
         documents = []
         m_tokenizer = MosesTokenizer(lang=lang)
 
-        for fpath in tqdm(sorted(glob.glob(f"{path}/*.sacr"))):
+        paths = sorted(glob.glob(f"{path}/*.sacr"))
+        if not ignored_files is None:
+            paths = [p for p in paths if not os.path.basename(p) in ignored_files]
+
+        for fpath in tqdm(paths):
             with open(fpath, **kwargs) as f:
                 text = f.read().replace("\n", " ")
 
@@ -614,7 +620,11 @@ def load_fr_litbank_dataset(
 ):
     root_path = os.path.expanduser(root_path.rstrip("/"))
     return CoreferenceDataset.from_sacr_dir(
-        f"{root_path}/sacr/All_Entites", tokenizer, max_span_size, "en"
+        f"{root_path}/sacr/All_Entites",
+        tokenizer,
+        max_span_size,
+        "en",
+        ignored_files=["schema.sacr"],
     )
 
 
