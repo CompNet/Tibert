@@ -110,7 +110,7 @@ def split_coreference_document(
 def pprint_coreference_document(doc: CoreferenceDocument):
     """Pretty-print a coreference document on the terminal."""
 
-    console = Console(force_terminal=True, color_system="standard")
+    console = Console(force_terminal=True, color_system="standard", highlight=False)
 
     mentions = []
     for chain_i, chain in enumerate(doc.coref_chains):
