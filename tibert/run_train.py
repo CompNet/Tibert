@@ -13,6 +13,7 @@ from tibert import (
     train_coref_model,
     load_train_checkpoint,
 )
+from tibert.bertcoref import CoreferenceDataset
 
 ex = Experiment()
 
@@ -99,15 +100,20 @@ def main(
 
     tokenizer = config["tokenizer_class"].from_pretrained(encoder)
 
-    dataset = config["loading_function"](dataset_path, tokenizer, max_span_size)
+    dataset: CoreferenceDataset = config["loading_function"](
+        dataset_path, tokenizer, max_span_size
+    )
+    train_dataset, test_dataset = dataset.splitted(0.9)
+    train_dataset.limit_doc_size_(sents_per_documents_train)
+    test_dataset.limit_doc_size_(11)
 
     train_coref_model(
         model,
-        dataset,
+        train_dataset,
+        test_dataset,
         tokenizer,
         batch_size=batch_size,
         epochs_nb=epochs_nb,
-        sents_per_documents_train=sents_per_documents_train,
         bert_lr=bert_lr,
         task_lr=task_lr,
         model_save_dir=out_model_dir,

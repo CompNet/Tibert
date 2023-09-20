@@ -1,7 +1,6 @@
 from typing import Optional, Tuple, Type, Union, Literal
 import traceback, copy, os
 from statistics import mean
-from more_itertools.recipes import flatten
 import torch
 from torch.utils.data.dataloader import DataLoader
 from transformers import BertTokenizerFast, CamembertTokenizerFast  # type: ignore
@@ -14,7 +13,7 @@ from tibert.bertcoref import (
 )
 from tibert.score import score_coref_predictions, score_mention_detection
 from tibert.predict import predict_coref
-from tibert.utils import gpu_memory_usage, split_coreference_document
+from tibert.utils import gpu_memory_usage
 
 
 def _save_train_checkpoint(
@@ -81,11 +80,11 @@ def _optimizer_to_(
 
 def train_coref_model(
     model: Union[BertForCoreferenceResolution, CamembertForCoreferenceResolution],
-    dataset: CoreferenceDataset,
+    train_dataset: CoreferenceDataset,
+    test_dataset: CoreferenceDataset,
     tokenizer: Union[BertTokenizerFast, CamembertTokenizerFast],
     batch_size: int = 1,
     epochs_nb: int = 30,
-    sents_per_documents_train: int = 11,
     bert_lr: float = 1e-5,
     task_lr: float = 2e-4,
     model_save_dir: Optional[str] = None,
@@ -120,37 +119,6 @@ def train_coref_model(
         device_str = "cuda" if torch.cuda.is_available() else "cpu"
     device = torch.device(device_str)
     model = model.to(device)
-
-    # Prepare datasets
-    # ----------------
-    train_dataset = CoreferenceDataset(
-        dataset.documents[: int(0.9 * len(dataset))],
-        dataset.tokenizer,
-        dataset.max_span_size,
-    )
-    train_dataset.documents = list(
-        flatten(
-            [
-                split_coreference_document(doc, sents_per_documents_train)
-                for doc in train_dataset.documents
-            ]
-        )
-    )
-
-    test_dataset = CoreferenceDataset(
-        dataset.documents[int(0.9 * len(dataset)) :],
-        dataset.tokenizer,
-        dataset.max_span_size,
-    )
-    test_dataset.documents = list(
-        flatten(
-            [
-                # HACK: test on full documents
-                split_coreference_document(doc, 11)
-                for doc in test_dataset.documents
-            ]
-        )
-    )
 
     data_collator = DataCollatorForSpanClassification(
         tokenizer, model.config.max_span_size

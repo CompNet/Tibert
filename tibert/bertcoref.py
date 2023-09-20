@@ -21,7 +21,12 @@ from transformers.models.camembert.configuration_camembert import CamembertConfi
 from transformers.tokenization_utils_base import BatchEncoding, PreTrainedTokenizerBase
 from transformers.utils import logging as transformers_logging
 from tqdm import tqdm
-from tibert.utils import spans_indexs, batch_index_select, spans
+from tibert.utils import (
+    spans_indexs,
+    batch_index_select,
+    spans,
+    split_coreference_document,
+)
 
 
 @dataclass
@@ -577,6 +582,21 @@ class CoreferenceDataset(Dataset):
             list(flatten([d.documents for d in datasets])),
             datasets[0].tokenizer,
             datasets[0].max_span_size,
+        )
+
+    def splitted(self, ratio: float) -> Tuple[CoreferenceDataset, CoreferenceDataset]:
+        first_docs = self.documents[: int(ratio * len(self))]
+        second_docs = self.documents[int(ratio * len(self)) :]
+        return (
+            CoreferenceDataset(first_docs, self.tokenizer, self.max_span_size),
+            CoreferenceDataset(second_docs, self.tokenizer, self.max_span_size),
+        )
+
+    def limit_doc_size_(self, sents_nb: int):
+        self.documents = list(
+            flatten(
+                [split_coreference_document(doc, sents_nb) for doc in self.documents]
+            )
         )
 
     def __len__(self) -> int:
