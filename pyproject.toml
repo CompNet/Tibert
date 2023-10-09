@@ -13,13 +13,12 @@ packages = [
 # required dependencies
 python = "^3.8,<3.11"
 torch = ">=2.0.0, !=2.0.1"
-transformers = "^4.30.2"
+transformers = "^4.32.1"
 tqdm = "^4.62.3"
 networkx = "^2.6.3"
-more-itertools = "^8.12.0"
-# TODO: neleval
+more-itertools = "^10.1.0"
 neleval = "^3.1.1"
-rich = "^13.4.2"
+rich = "^13.5.3"
 sacremoses = "^0.0.53"
 
 [tool.poetry.group.dev.dependencies]
