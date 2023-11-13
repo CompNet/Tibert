@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Literal, List, Union, cast
+from typing import TYPE_CHECKING, Generator, Literal, List, Union, cast
 from transformers import PreTrainedTokenizerFast
 import torch
 from tqdm import tqdm
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     )
 
 
-def predict_coref(
+def stream_predict_coref(
     documents: List[Union[str, List[str]]],
     model: BertForCoreferenceResolution,
     tokenizer: PreTrainedTokenizerFast,
@@ -22,7 +22,8 @@ def predict_coref(
     quiet: bool = False,
     device_str: Literal["cpu", "cuda", "auto"] = "auto",
     lang: str = "en",
-) -> List[CoreferenceDocument]:
+) -> Generator[CoreferenceDocument, None, None]:
+
     """Predict coreference chains for a list of documents.
 
     :param documents: A list of documents, tokenized or not.  If
@@ -47,7 +48,7 @@ def predict_coref(
     device = torch.device(device_str)
 
     if len(documents) == 0:
-        return []
+        return
 
     # Tokenized input sentence if needed
     if isinstance(documents[0], str):
@@ -72,10 +73,10 @@ def predict_coref(
     model = model.eval()  # type: ignore
     model = model.to(device)
 
-    preds = []
-
     with torch.no_grad():
+
         for i, batch in enumerate(tqdm(dataloader, disable=quiet)):
+
             local_batch_size = batch["input_ids"].shape[0]
 
             start_idx = batch_size * i
@@ -84,21 +85,50 @@ def predict_coref(
 
             batch = batch.to(device)
             out: BertCoreferenceResolutionOutput = model(**batch)
+
             out_docs = out.coreference_documents(
                 [
                     [tokenizer.decode(t) for t in input_ids]  # type: ignore
                     for input_ids in batch["input_ids"]
                 ]
             )
-            out_docs = [
-                out_doc.from_wpieced_to_tokenized(original_doc.tokens, batch, batch_i)
-                for batch_i, (original_doc, out_doc) in enumerate(
-                    zip(batch_docs, out_docs)
-                )
-            ]
-            preds += out_docs
 
-    return preds
+            for batch_i, (original_doc, out_doc) in enumerate(
+                zip(batch_docs, out_docs)
+            ):
+                doc = out_doc.from_wpieced_to_tokenized(
+                    original_doc.tokens, batch, batch_i
+                )
+                yield doc
+
+
+def predict_coref(
+    documents: List[Union[str, List[str]]],
+    model: BertForCoreferenceResolution,
+    tokenizer: PreTrainedTokenizerFast,
+    batch_size: int = 1,
+    quiet: bool = False,
+    device_str: Literal["cpu", "cuda", "auto"] = "auto",
+    lang: str = "en",
+) -> List[CoreferenceDocument]:
+    """Predict coreference chains for a list of documents.
+
+    :param documents: A list of documents, tokenized or not.  If
+        documents are not tokenized, MosesTokenizer will tokenize them
+        automatically.
+    :param tokenizer:
+    :param batch_size:
+    :param quiet: If ``True``, will report progress using ``tqdm``.
+    :param lang: lang for ``MosesTokenizer``
+
+    :return: a list of ``CoreferenceDocument``, with annotated
+             coreference chains.
+    """
+    return list(
+        stream_predict_coref(
+            documents, model, tokenizer, batch_size, quiet, device_str, lang
+        )
+    )
 
 
 def predict_coref_simple(
