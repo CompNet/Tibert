@@ -400,6 +400,7 @@ class CoreferenceDataset(Dataset):
         max_span_size: int,
         tokens_split_idx: int,
         corefs_split_idx: int,
+        separator: str = "\t",
     ) -> CoreferenceDataset:
         """
         :param tokens_split_idx: index of the tokens column in the
@@ -435,7 +436,7 @@ class CoreferenceDataset(Dataset):
                     open_mentions = {}
                     continue
 
-                splitted = line.split("\t")
+                splitted = line.split(separator)
 
                 # - tokens
                 document_tokens.append(splitted[tokens_split_idx])
@@ -453,7 +454,7 @@ class CoreferenceDataset(Dataset):
                 #   - A ending parenthesis indicate the end of a mention
                 #   - The middle number indicates the ID of the coreference chain
                 #     the mention belongs to
-                if splitted[4] == "-":
+                if splitted[corefs_split_idx] == "-":
                     continue
 
                 coref_datas_list = splitted[corefs_split_idx].split("|")
@@ -632,6 +633,21 @@ def load_litbank_dataset(
             )
             for fpath in sorted(glob.glob(f"{root_path}/coref/conll/*.conll"))
         ]
+    )
+
+
+def load_democrat_dataset(
+    root_path: str, tokenizer: PreTrainedTokenizerFast, max_span_size: int
+) -> CoreferenceDataset:
+    "Load the Democrat dataset from the boberle/coreference_databases repository."
+    root_path = os.path.expanduser(root_path.rstrip("/"))
+    return CoreferenceDataset.from_conll2012_file(
+        f"{root_path}/democrat_dem1921/dem1921_base.conll",
+        tokenizer,
+        max_span_size,
+        3,
+        11,
+        separator=" ",
     )
 
 

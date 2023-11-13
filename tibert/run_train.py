@@ -13,7 +13,7 @@ from tibert import (
     train_coref_model,
     load_train_checkpoint,
 )
-from tibert.bertcoref import CoreferenceDataset
+from tibert.bertcoref import CoreferenceDataset, load_democrat_dataset
 
 ex = Experiment()
 
@@ -22,7 +22,7 @@ ex = Experiment()
 def config():
     batch_size: int = 1
     epochs_nb: int = 30
-    # either "litbank" or "fr-litbank"
+    # either "litbank", "fr-litbank" or "democrat"
     dataset_name: str = "litbank"
     dataset_path: str = os.path.expanduser("~/litbank")
     mentions_per_tokens: float = 0.4
@@ -45,7 +45,7 @@ def main(
     _run: Run,
     batch_size: int,
     epochs_nb: int,
-    dataset_name: Literal["litbank", "fr-litbank"],
+    dataset_name: Literal["litbank", "fr-litbank", "democrat"],
     dataset_path: str,
     mentions_per_tokens: float,
     antecedents_nb: int,
@@ -73,6 +73,11 @@ def main(
             "model_class": CamembertForCoreferenceResolution,
             "tokenizer_class": CamembertTokenizerFast,
             "loading_function": load_fr_litbank_dataset,
+        },
+        "democrat": {
+            "model_class": CamembertForCoreferenceResolution,
+            "tokenizer_class": CamembertTokenizerFast,
+            "loading_function": load_democrat_dataset,
         },
     }
 
