@@ -121,19 +121,21 @@ def pprint_coreference_document(doc: CoreferenceDocument):
 
     for token_i, token in enumerate(doc.tokens):
 
-        related_chains = [
+        related_mentions = [
             (chain_i, start_i, end_i)
             for chain_i, start_i, end_i in mentions
             if start_i == token_i or end_i - 1 == token_i
         ]
+        # sort to have outermost mentions first
+        related_mentions = sorted(related_mentions, key=lambda c: c[1] - c[2])
 
-        for chain_i, start_i, _ in related_chains:
+        for chain_i, start_i, _ in related_mentions:
             if token_i == start_i:
                 out.append(f"[red]({chain_i}")
 
         out.append(token)
 
-        for chain_i, _, end_i in related_chains:
+        for chain_i, _, end_i in related_mentions:
             if token_i == end_i - 1:
                 out.append(f")[/red]")
 
