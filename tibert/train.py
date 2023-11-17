@@ -1,4 +1,5 @@
-from typing import Optional, Tuple, Type, Union, Literal
+import pickle
+from typing import List, Optional, Tuple, Type, Union, Literal
 import traceback, copy, os
 from statistics import mean
 import torch
@@ -9,10 +10,11 @@ from tibert.bertcoref import (
     BertForCoreferenceResolution,
     CamembertForCoreferenceResolution,
     CoreferenceDataset,
+    CoreferenceDocument,
     DataCollatorForSpanClassification,
 )
 from tibert.score import score_coref_predictions, score_mention_detection
-from tibert.predict import predict_coref
+from tibert.predict import predict_coref, predict_coref_simple
 from tibert.utils import gpu_memory_usage
 
 
@@ -78,6 +80,30 @@ def _optimizer_to_(
     return optimizer
 
 
+def _save_append_example_pred(
+    path: str,
+    model: Union[BertForCoreferenceResolution, CamembertForCoreferenceResolution],
+    tokenizer: Union[BertTokenizerFast, CamembertTokenizerFast],
+    example_doc: CoreferenceDocument,
+):
+    """
+    Save an example and its prediction to a file, keeping previous
+    predictions.  Useful to follow the evolution of predictions for an
+    example.
+    """
+    pred = predict_coref_simple(example_doc.tokens, model, tokenizer)
+
+    if os.path.exists(path):
+        with open(path, "rb") as f:
+            ex_dict = pickle.load(f)
+        ex_dict["preds"] = ex_dict.get("preds", []) + [pred]
+    else:
+        ex_dict = {"ref": example_doc, "preds": [pred]}
+
+    with open(path, "wb") as f:
+        pickle.dump(ex_dict, f)
+
+
 def train_coref_model(
     model: Union[BertForCoreferenceResolution, CamembertForCoreferenceResolution],
     train_dataset: CoreferenceDataset,
@@ -91,6 +117,7 @@ def train_coref_model(
     device_str: Literal["cpu", "cuda", "auto"] = "auto",
     _run: Optional["sacred.run.Run"] = None,
     optimizer: Optional[torch.optim.AdamW] = None,
+    example_tracking_path: Optional[str] = None,
 ) -> BertForCoreferenceResolution:
     """
     :param model: model to train
@@ -109,6 +136,9 @@ def train_coref_model(
     :param _run: sacred run, used to log metrics
     :param optimizer: a torch optimizer to use.  Can be useful to
         resume training.
+    :param example_tracking_path: if given, path to a file where an
+        example and its prediction will be dumped each epoch.  Usefull
+        to track the evolution of predictions.
 
     :return: the best trained model, according to CoNLL-F1 on the test
              set
@@ -217,6 +247,13 @@ def train_coref_model(
         print(
             f"mention detection metrics: (precision: {m_precision}, recall: {m_recall}, f1: {m_f1})"
         )
+
+        # Example evolution tracking
+        # --------------------------
+        if not example_tracking_path is None:
+            _save_append_example_pred(
+                example_tracking_path, model, tokenizer, test_dataset.documents[1]
+            )
 
         # Model saving
         # ------------

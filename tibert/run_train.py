@@ -38,6 +38,7 @@ def config():
     encoder: str = "bert-base-cased"
     out_model_dir: str = os.path.expanduser("~/tibert/model")
     checkpoint: Optional[str] = None
+    example_tracking_path: Optional[str] = None
 
 
 @ex.main
@@ -60,6 +61,7 @@ def main(
     encoder: str,
     out_model_dir: str,
     checkpoint: Optional[str],
+    example_tracking_path: Optional[str],
 ):
     print_config(_run)
 
@@ -125,6 +127,7 @@ def main(
         device_str="auto",
         _run=_run,
         optimizer=optimizer,
+        example_tracking_path=example_tracking_path,
     )
 
 
