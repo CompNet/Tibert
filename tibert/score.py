@@ -1,11 +1,247 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Dict, List, Literal, Callable, Set, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Collection,
+    Dict,
+    List,
+    Literal,
+    Callable,
+    Set,
+    Tuple,
+)
+import itertools as it
 from statistics import mean
 import numpy as np
+from neleval.coref_metrics import muc, b_cubed, ceaf
 from tibert.utils import spans_indexs
 
 if TYPE_CHECKING:
     from tibert.bertcoref import CoreferenceDocument, Mention
+
+
+def _coref_doc_to_neleval_format(doc: CoreferenceDocument, max_span_size: int):
+    """Convert a coreference document to the format expected by ``neleval``"""
+
+    spans_idxs = spans_indexs(doc.tokens, max_span_size)
+
+    # { chain_id => {tokens_id} }
+    clusters = {}
+
+    for chain_i, chain in enumerate(doc.coref_chains):
+        clusters[chain_i] = set(
+            [
+                spans_idxs.index((mention.start_idx, mention.end_idx))
+                for mention in chain
+            ]
+        )
+
+    return clusters
+
+
+def _neleval_precision_recall_f1(
+    pred: CoreferenceDocument,
+    ref: CoreferenceDocument,
+    neleval_fn: Callable[
+        [Dict[int, Set[str]], Dict[int, Set[str]]],
+        Tuple[float, float, float, float],
+    ],
+) -> Tuple[float, float, float]:
+    """Get precision, recall and f1 for a predicted document from a neleval metrics."""
+    try:
+        pred_max_span_size = max(
+            [
+                (mention.end_idx - mention.start_idx) + 1
+                for chain in pred.coref_chains
+                for mention in chain
+            ]
+        )
+    except ValueError:
+        pred_max_span_size = 0
+    try:
+        ref_max_span_size = max(
+            [
+                (mention.end_idx - mention.start_idx) + 1
+                for chain in ref.coref_chains
+                for mention in chain
+            ]
+        )
+    except ValueError:
+        ref_max_span_size = 0
+    max_span_size = max(pred_max_span_size, ref_max_span_size)
+    # TODO max_span_size
+    neleval_pred = _coref_doc_to_neleval_format(pred, max_span_size + 1)
+    neleval_ref = _coref_doc_to_neleval_format(ref, max_span_size + 1)
+
+    if neleval_pred == neleval_ref:
+        precision = 1.0
+        recall = 1.0
+        f1 = 1.0
+    else:
+        # num = numerator
+        # den = denominator
+        p_num, p_den, r_num, r_den = neleval_fn(neleval_ref, neleval_pred)
+        precision = p_num / p_den if p_den > 0 else 0.0
+        recall = r_num / r_den if r_den > 0 else 0.0
+        if precision + recall != 0.0:
+            f1 = 2 * precision * recall / (precision + recall)
+        else:
+            f1 = 0.0
+
+    return precision, recall, f1
+
+
+def score_muc(
+    preds: List[CoreferenceDocument], refs: List[CoreferenceDocument]
+) -> Tuple[float, float, float]:
+    """Compute MUC using neleval.
+
+    .. note::
+
+        the returned metrics are the macro-wise mean across documents
+
+    :return: (precision, recall, f1)
+    """
+    assert len(preds) > 0
+    assert len(preds) == len(refs)
+
+    # neleval use np.int and np.bool, which are deprecated
+    # (https://numpy.org/devdocs/release/1.20.0-notes.html#deprecations). The
+    # two following lines fix the resulting crash.
+    np.int = int  # type: ignore
+    np.bool = bool  # type: ignore
+
+    precisions, recalls, f1s = []
+    for pred, ref in zip(preds, refs):
+        p, r, f1 = _neleval_precision_recall_f1(pred, ref, muc)
+        precisions.append(p)
+        recalls.append(r)
+        f1s.append(f1)
+
+    return mean(precisions), mean(recalls), mean(f1s)
+
+
+def score_b_cubed(
+    preds: List[CoreferenceDocument], refs: List[CoreferenceDocument]
+) -> Tuple[float, float, float]:
+    """Compute B^3 using neleval.
+
+    .. note::
+
+        the returned metrics are the macro-wise mean across documents
+
+    :return: (precision, recall, f1)
+    """
+    assert len(preds) > 0
+    assert len(preds) == len(refs)
+
+    # neleval use np.int and np.bool, which are deprecated
+    # (https://numpy.org/devdocs/release/1.20.0-notes.html#deprecations). The
+    # two following lines fix the resulting crash.
+    np.int = int  # type: ignore
+    np.bool = bool  # type: ignore
+
+    precisions, recalls, f1s = []
+    for pred, ref in zip(preds, refs):
+        p, r, f1 = _neleval_precision_recall_f1(pred, ref, b_cubed)
+        precisions.append(p)
+        recalls.append(r)
+        f1s.append(f1)
+
+    return mean(precisions), mean(recalls), mean(f1s)
+
+
+def score_ceaf(
+    preds: List[CoreferenceDocument], refs: List[CoreferenceDocument]
+) -> Tuple[float, float, float]:
+    """Compute CEAF using neleval.
+
+    .. note::
+
+        the returned metrics are the macro-wise mean across documents
+
+    :return: (precision, recall, f1)
+    """
+    assert len(preds) > 0
+    assert len(preds) == len(refs)
+
+    # neleval use np.int and np.bool, which are deprecated
+    # (https://numpy.org/devdocs/release/1.20.0-notes.html#deprecations). The
+    # two following lines fix the resulting crash.
+    np.int = int  # type: ignore
+    np.bool = bool  # type: ignore
+
+    precisions, recalls, f1s = []
+    for pred, ref in zip(preds, refs):
+        p, r, f1 = _neleval_precision_recall_f1(pred, ref, ceaf)
+        precisions.append(p)
+        recalls.append(r)
+        f1s.append(f1)
+
+    return mean(precisions), mean(recalls), mean(f1s)
+
+
+def score_lea(
+    preds: List[CoreferenceDocument], refs: List[CoreferenceDocument]
+) -> Tuple[float, float, float]:
+    """Score coreference prediction according to LEA
+
+    .. note::
+
+        the returned metrics are the macro-wise mean across documents
+
+    :return: (precision, recall, f1)
+    """
+    assert len(preds) > 0
+    assert len(preds) == len(refs)
+
+    def lea_link(entity: List[Mention]) -> set:
+        if len(entity) == 1:
+            return set([(entity[0], entity[0])])
+        return set(it.combinations(entity, 2))
+
+    def lea_link_score(links: set) -> int:
+        return len(links)
+
+    def lea_res_score(entity: List[Mention], entities: List[List[Mention]]) -> float:
+        score = sum(
+            [
+                lea_link_score(lea_link(entity).intersection(lea_link(o_entity)))
+                / lea_link_score(lea_link(entity))
+                for o_entity in entities
+            ]
+        )
+        return score
+
+    precisions, recalls, f1s = [], [], []
+
+    for pred, ref in zip(preds, refs):
+
+        precision_num = 0
+        precision_den = 0
+        for pred_chain in pred.coref_chains:
+            importance = len(pred_chain)
+            precision_den += importance
+            precision_num += importance * lea_res_score(pred_chain, ref.coref_chains)
+
+        precision = precision_num / precision_den if precision_den > 0 else 0
+        precisions.append(precision)
+
+        recall_num = 0
+        recall_den = 0
+        for ref_chain in ref.coref_chains:
+            importance = len(ref_chain)
+            recall_den += importance
+            recall_num += importance * lea_res_score(ref_chain, pred.coref_chains)
+        recall = recall_num / recall_den if recall_den > 0 else 0
+        recalls.append(recall)
+
+        if (precision + recall) == 0:
+            f1 = 0
+        else:
+            f1 = (2 * precision * recall) / (precision + recall)
+        f1s.append(f1)
+
+    return mean(precisions), mean(recalls), mean(f1s)
 
 
 def score_coref_predictions(
@@ -19,118 +255,30 @@ def score_coref_predictions(
 
     .. note::
 
-        Needs package ``neleval``
+        the returned metrics are the macro-wise mean across documents
 
     :param preds: Predictions
     :param refs: References
     """
-    assert len(preds) == len(refs)
-    assert len(preds) > 0
-
-    # neleval use np.int and np.bool, which are deprecated
-    # (https://numpy.org/devdocs/release/1.20.0-notes.html#deprecations). The
-    # two following lines fix the resulting crash.
-    np.int = int  # type: ignore
-    np.bool = bool  # type: ignore
-
-    from neleval.coref_metrics import muc, b_cubed, ceaf
-
-    def coref_doc_to_neleval_format(doc: CoreferenceDocument, max_span_size: int):
-        """Convert a coreference document to the format expected by ``neleval``"""
-
-        spans_idxs = spans_indexs(doc.tokens, max_span_size)
-
-        # { chain_id => {tokens_id} }
-        clusters = {}
-
-        for chain_i, chain in enumerate(doc.coref_chains):
-            clusters[chain_i] = set(
-                [
-                    spans_idxs.index((mention.start_idx, mention.end_idx))
-                    for mention in chain
-                ]
-            )
-
-        return clusters
-
-    def precisions_recalls_f1s(
-        preds: List[CoreferenceDocument],
-        refs: List[CoreferenceDocument],
-        neleval_fn: Callable[
-            [Dict[int, Set[str]], Dict[int, Set[str]]],
-            Tuple[float, float, float, float],
-        ],
-    ) -> Tuple[List[float], List[float], List[float]]:
-        """Get precisions, recalls and f1s from a neleval metrics"""
-        precisions = []
-        recalls = []
-        f1s = []
-        for pred, ref in zip(preds, refs):
-            try:
-                pred_max_span_size = max(
-                    [
-                        (mention.end_idx - mention.start_idx) + 1
-                        for chain in pred.coref_chains
-                        for mention in chain
-                    ]
-                )
-            except ValueError:
-                pred_max_span_size = 0
-            try:
-                ref_max_span_size = max(
-                    [
-                        (mention.end_idx - mention.start_idx) + 1
-                        for chain in ref.coref_chains
-                        for mention in chain
-                    ]
-                )
-            except ValueError:
-                ref_max_span_size = 0
-            max_span_size = max(pred_max_span_size, ref_max_span_size)
-            # TODO max_span_size
-            neleval_pred = coref_doc_to_neleval_format(pred, max_span_size + 1)
-            neleval_ref = coref_doc_to_neleval_format(ref, max_span_size + 1)
-
-            if neleval_pred == neleval_ref:
-                precision = 1.0
-                recall = 1.0
-                f1 = 1.0
-            else:
-                # num = numerator
-                # den = denominator
-                p_num, p_den, r_num, r_den = neleval_fn(neleval_ref, neleval_pred)
-                precision = p_num / p_den if p_den > 0 else 0.0
-                recall = r_num / r_den if r_den > 0 else 0.0
-                if precision + recall != 0.0:
-                    f1 = 2 * precision * recall / (precision + recall)
-                else:
-                    f1 = 0.0
-
-            precisions.append(precision)
-            recalls.append(recall)
-            f1s.append(f1)
-
-        return precisions, recalls, f1s
-
-    muc_precisions, muc_recalls, muc_f1s = precisions_recalls_f1s(preds, refs, muc)
-    b3_precisions, b3_recalls, b3_f1s = precisions_recalls_f1s(preds, refs, b_cubed)
-    ceaf_precisions, ceaf_recalls, ceaf_f1s = precisions_recalls_f1s(preds, refs, ceaf)
+    muc_precision, muc_recall, muc_f1 = score_muc(preds, refs)
+    b3_precision, b3_recall, b3_f1 = score_b_cubed(preds, refs)
+    ceaf_precision, ceaf_recall, ceaf_f1 = score_ceaf(preds, refs)
 
     return {
         "MUC": {
-            "precision": mean(muc_precisions),
-            "recall": mean(muc_recalls),
-            "f1": mean(muc_f1s),
+            "precision": muc_precision,
+            "recall": muc_recall,
+            "f1": muc_f1,
         },
         "B3": {
-            "precision": mean(b3_precisions),
-            "recall": mean(b3_recalls),
-            "f1": mean(b3_f1s),
+            "precision": b3_precision,
+            "recall": b3_recall,
+            "f1": b3_f1,
         },
         "CEAF": {
-            "precision": mean(ceaf_precisions),
-            "recall": mean(ceaf_recalls),
-            "f1": mean(ceaf_f1s),
+            "precision": ceaf_precision,
+            "recall": ceaf_recall,
+            "f1": ceaf_f1,
         },
     }
 
