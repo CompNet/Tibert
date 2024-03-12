@@ -12,7 +12,7 @@ from typing import (
 import itertools as it
 from statistics import mean
 import numpy as np
-from neleval.coref_metrics import muc, b_cubed, ceaf
+from neleval.coref_metrics import muc, b_cubed, ceaf, pairwise, pairwise_negative
 from tibert.utils import spans_indexs
 
 if TYPE_CHECKING:
@@ -38,15 +38,7 @@ def _coref_doc_to_neleval_format(doc: CoreferenceDocument, max_span_size: int):
     return clusters
 
 
-def _neleval_precision_recall_f1(
-    pred: CoreferenceDocument,
-    ref: CoreferenceDocument,
-    neleval_fn: Callable[
-        [Dict[int, Set[str]], Dict[int, Set[str]]],
-        Tuple[float, float, float, float],
-    ],
-) -> Tuple[float, float, float]:
-    """Get precision, recall and f1 for a predicted document from a neleval metrics."""
+def _max_span_size(pred: CoreferenceDocument, ref: CoreferenceDocument) -> int:
     try:
         pred_max_span_size = max(
             [
@@ -57,6 +49,7 @@ def _neleval_precision_recall_f1(
         )
     except ValueError:
         pred_max_span_size = 0
+
     try:
         ref_max_span_size = max(
             [
@@ -67,8 +60,20 @@ def _neleval_precision_recall_f1(
         )
     except ValueError:
         ref_max_span_size = 0
-    max_span_size = max(pred_max_span_size, ref_max_span_size)
-    # TODO max_span_size
+
+    return max(pred_max_span_size, ref_max_span_size)
+
+
+def _neleval_precision_recall_f1(
+    pred: CoreferenceDocument,
+    ref: CoreferenceDocument,
+    neleval_fn: Callable[
+        [Dict[int, Set[str]], Dict[int, Set[str]]],
+        Tuple[float, float, float, float],
+    ],
+) -> Tuple[float, float, float]:
+    """Get precision, recall and f1 for a predicted document from a neleval metrics."""
+    max_span_size = _max_span_size(pred, ref)
     neleval_pred = _coref_doc_to_neleval_format(pred, max_span_size + 1)
     neleval_ref = _coref_doc_to_neleval_format(ref, max_span_size + 1)
 
@@ -140,7 +145,7 @@ def score_b_cubed(
     np.int = int  # type: ignore
     np.bool = bool  # type: ignore
 
-    precisions, recalls, f1s = []
+    precisions, recalls, f1s = [], [], []
     for pred, ref in zip(preds, refs):
         p, r, f1 = _neleval_precision_recall_f1(pred, ref, b_cubed)
         precisions.append(p)
@@ -170,12 +175,43 @@ def score_ceaf(
     np.int = int  # type: ignore
     np.bool = bool  # type: ignore
 
-    precisions, recalls, f1s = []
+    precisions, recalls, f1s = [], [], []
     for pred, ref in zip(preds, refs):
         p, r, f1 = _neleval_precision_recall_f1(pred, ref, ceaf)
         precisions.append(p)
         recalls.append(r)
         f1s.append(f1)
+
+    return mean(precisions), mean(recalls), mean(f1s)
+
+
+def score_blanc(
+    preds: List[CoreferenceDocument], refs: List[CoreferenceDocument]
+) -> Tuple[float, float, float]:
+    assert len(preds) > 0
+    assert len(preds) == len(refs)
+
+    precisions, recalls, f1s = [], [], []
+
+    for pred, ref in zip(preds, refs):
+        max_span_size = _max_span_size(pred, ref)
+        neleval_pred = _coref_doc_to_neleval_format(pred, max_span_size + 1)
+        neleval_ref = _coref_doc_to_neleval_format(ref, max_span_size + 1)
+
+        p_num, p_den, r_num, r_den = pairwise(neleval_ref, neleval_pred)
+        np_num, np_den, nr_num, nr_den = pairwise_negative(neleval_ref, neleval_pred)
+
+        P_c = p_num / p_den
+        P_n = np_num / np_den
+        precisions.append((P_c + P_n) / 2.0)
+
+        R_c = r_num / r_den
+        R_n = nr_num / nr_den
+        recalls.append((R_c + R_n) / 2.0)
+
+        F_c = (2 * P_c * R_c) / (P_c + R_c)
+        F_n = (2 * P_n * R_n) / (P_n + R_n)
+        f1s.append((F_c + F_n) / 2.0)
 
     return mean(precisions), mean(recalls), mean(f1s)
 
@@ -247,11 +283,10 @@ def score_lea(
 def score_coref_predictions(
     preds: List[CoreferenceDocument], refs: List[CoreferenceDocument]
 ) -> Dict[
-    Literal["MUC", "B3", "CEAF"],
+    Literal["MUC", "B3", "CEAF", "BLANC", "LEA"],
     Dict[Literal["precision", "recall", "f1"], float],
 ]:
-    """Score coreference prediction according to MUC, B3 and CEAF
-    metrics
+    """Score coreference prediction according to MUC, B3, CEAF, BLANC and LEA
 
     .. note::
 
@@ -263,6 +298,8 @@ def score_coref_predictions(
     muc_precision, muc_recall, muc_f1 = score_muc(preds, refs)
     b3_precision, b3_recall, b3_f1 = score_b_cubed(preds, refs)
     ceaf_precision, ceaf_recall, ceaf_f1 = score_ceaf(preds, refs)
+    blanc_precision, blanc_recall, blanc_f1 = score_blanc(preds, refs)
+    lea_precision, lea_recall, lea_f1 = score_lea(preds, refs)
 
     return {
         "MUC": {
@@ -279,6 +316,16 @@ def score_coref_predictions(
             "precision": ceaf_precision,
             "recall": ceaf_recall,
             "f1": ceaf_f1,
+        },
+        "BLANC": {
+            "precision": blanc_precision,
+            "recall": blanc_recall,
+            "f1": blanc_f1,
+        },
+        "LEA": {
+            "precision": lea_precision,
+            "recall": lea_recall,
+            "f1": lea_f1,
         },
     }
 
