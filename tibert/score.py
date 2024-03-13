@@ -205,11 +205,6 @@ def score_blanc(
         p_num, p_den, r_num, r_den = pairwise(neleval_ref, neleval_pred)
         np_num, np_den, nr_num, nr_den = pairwise_negative(neleval_ref, neleval_pred)
 
-        # pred_has_one_entity = len(pred.coref_chains) == 1
-        # pred_has_only_singletons = all([len(chain) == 1 for chain in pred.coref_chains])
-        # ref_has_one_entity = len(ref.coref_chains) == 1
-        # ref_has_only_singletons = all([len(chain) == 1 for chain in ref.coref_chains])
-
         P_c = 0 if p_den == 0 else p_num / p_den
         P_n = 0 if np_den == 0 else np_num / np_den
 
