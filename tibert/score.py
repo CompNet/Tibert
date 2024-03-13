@@ -191,9 +191,13 @@ def score_blanc(
     assert len(preds) > 0
     assert len(preds) == len(refs)
 
-    precisions, recalls, f1s = [], [], []
+    prf = []
 
     for pred, ref in zip(preds, refs):
+        if pred.coref_chains == ref.coref_chains:
+            prf.append((1, 1, 1))
+            continue
+
         max_span_size = _max_span_size(pred, ref)
         neleval_pred = _coref_doc_to_neleval_format(pred, max_span_size + 1)
         neleval_ref = _coref_doc_to_neleval_format(ref, max_span_size + 1)
@@ -201,19 +205,27 @@ def score_blanc(
         p_num, p_den, r_num, r_den = pairwise(neleval_ref, neleval_pred)
         np_num, np_den, nr_num, nr_den = pairwise_negative(neleval_ref, neleval_pred)
 
-        P_c = p_num / p_den
-        P_n = np_num / np_den
-        precisions.append((P_c + P_n) / 2.0)
+        # pred_has_one_entity = len(pred.coref_chains) == 1
+        # pred_has_only_singletons = all([len(chain) == 1 for chain in pred.coref_chains])
+        # ref_has_one_entity = len(ref.coref_chains) == 1
+        # ref_has_only_singletons = all([len(chain) == 1 for chain in ref.coref_chains])
 
-        R_c = r_num / r_den
-        R_n = nr_num / nr_den
-        recalls.append((R_c + R_n) / 2.0)
+        P_c = 0 if p_den == 0 else p_num / p_den
+        P_n = 0 if np_den == 0 else np_num / np_den
 
-        F_c = (2 * P_c * R_c) / (P_c + R_c)
-        F_n = (2 * P_n * R_n) / (P_n + R_n)
-        f1s.append((F_c + F_n) / 2.0)
+        R_c = 0 if r_den == 0 else r_num / r_den
+        R_n = 0 if nr_den == 0 else nr_num / nr_den
 
-    return mean(precisions), mean(recalls), mean(f1s)
+        F_c = 0 if P_c + R_c == 0 else (2 * P_c * R_c) / (P_c + R_c)
+        F_n = 0 if P_n + R_n == 0 else (2 * P_n * R_n) / (P_n + R_n)
+
+        prf.append(((P_c + P_n) / 2.0, (R_c + R_n) / 2.0, (F_c + F_n) / 2.0))
+
+    return (
+        mean([m[0] for m in prf]),
+        mean([m[1] for m in prf]),
+        mean([m[2] for m in prf]),
+    )
 
 
 def score_lea(
@@ -251,7 +263,6 @@ def score_lea(
     precisions, recalls, f1s = [], [], []
 
     for pred, ref in zip(preds, refs):
-
         precision_num = 0
         precision_den = 0
         for pred_chain in pred.coref_chains:
@@ -352,7 +363,6 @@ def score_mention_detection(
     f1_l = []
 
     for pred, ref in zip(preds, refs):
-
         pred_mentions = doc_mentions(pred)
         ref_mentions = doc_mentions(ref)
 
