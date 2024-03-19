@@ -246,13 +246,15 @@ def score_lea(
         return len(links)
 
     def lea_res_score(entity: List[Mention], entities: List[List[Mention]]) -> float:
-        score = sum(
-            [
+        score = 0
+        for o_entity in entities:
+            entity_link_score = lea_link_score(lea_link(entity))
+            if entity_link_score == 0:
+                continue
+            score += (
                 lea_link_score(lea_link(entity).intersection(lea_link(o_entity)))
-                / lea_link_score(lea_link(entity))
-                for o_entity in entities
-            ]
-        )
+                / entity_link_score
+            )
         return score
 
     precisions, recalls, f1s = [], [], []
