@@ -41,6 +41,13 @@ class Mention:
         self_dict["end_idx"] = self.end_idx + shift
         return self.__class__(**self_dict)
 
+    def __eq__(self, other: Mention) -> bool:
+        return (
+            self.tokens == other.tokens
+            and self.start_idx == other.start_idx
+            and self.end_idx == other.end_idx
+        )
+
     def __hash__(self) -> int:
         return hash(tuple(self.tokens) + (self.start_idx, self.end_idx))
 
@@ -217,11 +224,9 @@ class CoreferenceDocument:
         new_chains = []
 
         for chain in self.coref_chains:
-
             new_chain = []
 
             for mention in chain:
-
                 new_start_idx = wp_to_token[mention.start_idx]
                 new_end_idx = wp_to_token[mention.end_idx - 1]
                 # NOTE: this happens in case the model has predicted
