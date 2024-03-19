@@ -115,7 +115,7 @@ def score_muc(
     np.int = int  # type: ignore
     np.bool = bool  # type: ignore
 
-    precisions, recalls, f1s = []
+    precisions, recalls, f1s = [], [], []
     for pred, ref in zip(preds, refs):
         p, r, f1 = _neleval_precision_recall_f1(pred, ref, muc)
         precisions.append(p)
