@@ -1,5 +1,15 @@
 from __future__ import annotations
-from typing import Dict, Iterator, List, Literal, Optional, Tuple, Union
+from typing import (
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
 import re, glob, os
 from collections import defaultdict
 from pathlib import Path
@@ -196,22 +206,16 @@ class CoreferenceDocument:
         return document, batch
 
     def from_wpieced_to_tokenized(
-        self, tokens: List[str], batch: BatchEncoding, batch_idx: int
+        self, tokens: List[str], wp_to_token: List[int]
     ) -> CoreferenceDocument:
         """Convert the current document, tokenized with wordpieces, to
         a document 'normally' tokenized
 
         :param tokens: the original tokens
-        :param batch:
-        :param batch_idx:
+        :param wp_to_token: mapping from wordpiece index to token index
 
         :return:
         """
-        seq_size = batch["input_ids"].shape[1]  # type: ignore
-        wp_to_token = [
-            batch.token_to_word(batch_idx, token_index=i) for i in range(seq_size)
-        ]
-
         # In some cases, output mentions can be produced several
         # times. This can happen when a mention boundary is expressed
         # by several wordpiece (for example the wordpiece mentions :
@@ -303,6 +307,11 @@ class CoreferenceDocument:
 
         return CoreferenceDocument(tokens, chains)
 
+    T = TypeVar("T")
+
+    def mapmentions(self, fn: Callable[[Mention], T]) -> List[List[T]]:
+        return [[fn(mention) for mention in chain] for chain in self.coref_chains]
+
 
 @dataclass
 class DataCollatorForSpanClassification(DataCollatorMixin):
@@ -346,9 +355,9 @@ class DataCollatorForSpanClassification(DataCollatorMixin):
             # they are not of the same length yet.
             return_tensors="pt" if coref_labels is None else None,
         )
-        self.tokenizer.deprecation_warnings[
-            "Asking-to-pad-a-fast-tokenizer"
-        ] = warning_state
+        self.tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = (
+            warning_state
+        )
 
         # keep encoding info
         batch._encodings = [f.encodings[0] for f in features]
@@ -800,8 +809,8 @@ class BertCoreferenceResolutionOutput:
 
     loss: Optional[torch.Tensor] = None
 
-    hidden_states: Optional[Tuple[torch.FloatTensor]] = None
-    attentions: Optional[Tuple[torch.FloatTensor]] = None
+    # (batch_size, seq_size, hidden_size)
+    hidden_states: Optional[torch.FloatTensor] = None
 
     def coreference_documents(
         self, tokens: List[List[str]]
@@ -1110,11 +1119,16 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
         return close_indexs
 
     def distance_feature(
-        self, top_antecedents_index: torch.Tensor, spans_nb: int, seq_size: int
+        self,
+        top_antecedents_index: torch.Tensor,
+        top_mentions_index: torch.Tensor,
+        spans_nb: int,
+        seq_size: int,
     ) -> torch.Tensor:
         """Compute the distance feature between two spans
 
         :param top_antecedents_index: ``(batch_size, top_mentions_nb, antecedents_nb)``
+        :param top_mentions_index: ``(batch_size, top_mentions_nb)``
         :param spans_nb:
         :param seq_size:
 
@@ -1130,6 +1144,9 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
         dist = dist.unsqueeze(0).repeat(b, 1, 1)
         assert dist.shape == (b, p, p)
 
+        # we need (b, m, a)
+        selected_dist = batch_index_select(dist, 1, top_mentions_index)
+        assert selected_dist.shape == (b, m, p)
         selected_dist = batch_index_select(
             dist.flatten(start_dim=1), 1, top_antecedents_index.flatten(start_dim=1)
         ).reshape(b, m, a)
@@ -1233,6 +1250,7 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
         head_mask: Optional[torch.Tensor] = None,
         coref_labels: Optional[torch.LongTensor] = None,
         mention_labels: Optional[torch.LongTensor] = None,
+        return_hidden_state: bool = False,
     ) -> BertCoreferenceResolutionOutput:
         """
         :param input_ids: a tensor of shape ``(batch_size, seq_size)``
@@ -1241,6 +1259,8 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
         :param position_ids: a tensor of shape ``(batch_size, seq_size)``
         :param coref_labels: a tensor of shape ``(batch_size, spans_nb, spans_nb)``
         :param mention_labels: a tensor of shape ``(batch_size, spans_nb)``
+        :param return_hidden_state: if ``True``, set the hidden_state of
+            ``BertCoreferenceResolutionOutput``
         """
         batch_size = b = input_ids.shape[0]
         seq_size = s = input_ids.shape[1]
@@ -1334,7 +1354,9 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
         assert span_bounds_combination.shape == (b, m * a, 4 * h)
 
         # distance feature computation
-        dist_ft = self.distance_feature(top_antecedents_index, spans_nb, seq_size)
+        dist_ft = self.distance_feature(
+            top_antecedents_index, top_mentions_index, spans_nb, seq_size
+        )
         dist_ft = torch.flatten(dist_ft, start_dim=1, end_dim=2)
         assert dist_ft.shape == (b, m * a, t)
 
@@ -1423,72 +1445,8 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
             top_antecedents_index,
             self.config.max_span_size,
             loss=loss,
-            hidden_states=None,  # TODO
-            attentions=None,  # TODO
+            hidden_states=encoded_input if return_hidden_state else None,
         )
-
-    def predict(
-        self,
-        documents: List[List[str]],
-        tokenizer: PreTrainedTokenizerFast,
-        batch_size: int,
-        quiet: bool = False,
-    ) -> List[CoreferenceDocument]:
-        """Predict coreference chains for a list of documents.
-
-        :param documents: A list of tokenized documents.
-        :param tokenizer:
-        :param batch_size:
-        :param quiet: If ``True``, will report progress using
-            ``tqdm``.
-
-        :return: a list of ``CoreferenceDocument``, with annotated
-                 coreference chains.
-        """
-
-        dataset = CoreferenceDataset(
-            [CoreferenceDocument(doc, []) for doc in documents],
-            tokenizer,
-            self.config.max_span_size,
-        )
-        data_collator = DataCollatorForSpanClassification(tokenizer, self.config.max_span_size)  # type: ignore
-        dataloader = DataLoader(
-            dataset, batch_size=batch_size, collate_fn=data_collator, shuffle=False
-        )
-
-        device = next(self.parameters()).device  # type: ignore
-
-        self = self.eval()  # type: ignore
-
-        preds = []
-
-        with torch.no_grad():
-            for i, batch in enumerate(tqdm(dataloader, disable=quiet)):
-                local_batch_size = batch["input_ids"].shape[0]
-
-                start_idx = batch_size * i
-                end_idx = batch_size * i + local_batch_size
-                batch_docs = dataset.documents[start_idx:end_idx]
-
-                batch = batch.to(device)
-                out: BertCoreferenceResolutionOutput = self(**batch)
-                out_docs = out.coreference_documents(
-                    [
-                        [tokenizer.decode(t) for t in input_ids]  # type: ignore
-                        for input_ids in batch["input_ids"]
-                    ]
-                )
-                out_docs = [
-                    out_doc.from_wpieced_to_tokenized(
-                        original_doc.tokens, batch, batch_i
-                    )
-                    for batch_i, (original_doc, out_doc) in enumerate(
-                        zip(batch_docs, out_docs)
-                    )
-                ]
-                preds += out_docs
-
-        return preds
 
 
 class CamembertForCoreferenceResolutionConfig(CamembertConfig):

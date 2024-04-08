@@ -22,7 +22,9 @@ def test_doc_is_reconstructed(
     print(prep_doc)
     collator = DataCollatorForSpanClassification(bert_tokenizer, max_span_size)
     batch = collator([batch])
-    reconstructed_doc = prep_doc.from_wpieced_to_tokenized(doc.tokens, batch, 0)
+    seq_size = batch["input_ids"].shape[1]
+    wp_to_token = [batch.token_to_word(0, token_index=i) for i in range(seq_size)]
+    reconstructed_doc = prep_doc.from_wpieced_to_tokenized(doc.tokens, wp_to_token)
 
     assert doc.tokens == reconstructed_doc.tokens
     assert doc.coref_chains == reconstructed_doc.coref_chains
