@@ -245,17 +245,16 @@ def score_lea(
     def lea_link_score(links: set) -> int:
         return len(links)
 
-    def lea_res_score(entity: List[Mention], entities: List[List[Mention]]) -> float:
+    def lea_res_score(entity_lea_link: set, entities_lea_link: List[set]) -> float:
         score = 0
 
-        entity_lea_link = lea_link(entity)
         entity_link_score = lea_link_score(entity_lea_link)
         if entity_link_score == 0:
             return score
 
-        for o_entity in entities:
+        for o_entity_lea_link in entities_lea_link:
             score += (
-                lea_link_score(entity_lea_link.intersection(lea_link(o_entity)))
+                lea_link_score(entity_lea_link.intersection(o_entity_lea_link))
                 / entity_link_score
             )
         return score
@@ -263,22 +262,25 @@ def score_lea(
     precisions, recalls, f1s = [], [], []
 
     for pred, ref in zip(preds, refs):
+        ref_lea_links = [lea_link(chain) for chain in ref.coref_chains]
+        pred_lea_links = [lea_link(chain) for chain in pred.coref_chains]
+
         precision_num = 0
         precision_den = 0
-        for pred_chain in pred.coref_chains:
+        for pred_lea_link, pred_chain in zip(pred_lea_links, pred.coref_chains):
             importance = len(pred_chain)
             precision_den += importance
-            precision_num += importance * lea_res_score(pred_chain, ref.coref_chains)
+            precision_num += importance * lea_res_score(pred_lea_link, ref_lea_links)
 
         precision = precision_num / precision_den if precision_den > 0 else 0
         precisions.append(precision)
 
         recall_num = 0
         recall_den = 0
-        for ref_chain in ref.coref_chains:
+        for ref_lea_link, ref_chain in zip(ref_lea_links, ref.coref_chains):
             importance = len(ref_chain)
             recall_den += importance
-            recall_num += importance * lea_res_score(ref_chain, pred.coref_chains)
+            recall_num += importance * lea_res_score(ref_lea_link, pred_lea_links)
         recall = recall_num / recall_den if recall_den > 0 else 0
         recalls.append(recall)
 
