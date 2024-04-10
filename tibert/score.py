@@ -247,12 +247,15 @@ def score_lea(
 
     def lea_res_score(entity: List[Mention], entities: List[List[Mention]]) -> float:
         score = 0
-        entity_link_score = lea_link_score(lea_link(entity))
+
+        entity_lea_link = lea_link(entity)
+        entity_link_score = lea_link_score(entity_lea_link)
+        if entity_link_score == 0:
+            return score
+
         for o_entity in entities:
-            if entity_link_score == 0:
-                continue
             score += (
-                lea_link_score(lea_link(entity).intersection(lea_link(o_entity)))
+                lea_link_score(entity_lea_link.intersection(lea_link(o_entity)))
                 / entity_link_score
             )
         return score
