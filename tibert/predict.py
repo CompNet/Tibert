@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Generator, Literal, List, Optional, Union, cast, Tuple
-import itertools as it
+from statistics import mean
 import torch
 from torch.utils.data.dataloader import DataLoader
 from transformers import PreTrainedTokenizerFast
@@ -60,57 +60,79 @@ def merge_coref_outputs(
         m = len(merged_right.coref_chains)
         h = model.config.hidden_size
 
-        lhidden_states = torch.cat(tuple(hidden_states[:middle]))
-        left_mentions_repr = merged_left.mapmentions(
-            lambda m: torch.cat(
-                [lhidden_states[m.start_idx], lhidden_states[m.end_idx - 1]]
+        def tensorize_chains(
+            chains: List[List[Mention]], hidden_states: torch.Tensor
+        ) -> torch.Tensor:
+            """
+            :param chains: c chains
+            :param hidden_states: ``(s, h)``
+            :return: a tensor of shape ``(c, 2 * h)``
+            """
+
+            # (c, 2 * h)
+            return torch.stack(
+                [
+                    # (2 * h)
+                    torch.mean(
+                        torch.stack(
+                            [
+                                torch.cat(
+                                    [
+                                        hidden_states[mention.start_idx],
+                                        hidden_states[mention.end_idx - 1],
+                                    ]
+                                )
+                                for mention in chain
+                            ]
+                        ),
+                        dim=0,
+                    )
+                    for chain in chains
+                ]
             )
-        )
-        left_chains_repr = torch.stack(
-            [torch.mean(torch.stack(chain), dim=0) for chain in left_mentions_repr]
+
+        lhidden_states = torch.cat(tuple(hidden_states[:middle]))
+        left_mentions_repr = tensorize_chains(
+            merged_left.coref_chains, lhidden_states
         ).unsqueeze(0)
-        assert left_chains_repr.shape == (b, a, 2 * h)
+        left_mentions_repr = left_mentions_repr.reshape(b, a, 2, h)
 
         rhidden_states = torch.cat(tuple(hidden_states[middle:]))
-        right_mentions_repr = merged_right.mapmentions(
-            lambda m: torch.cat(
-                [rhidden_states[m.start_idx], rhidden_states[m.end_idx - 1]]
-            )
-        )
-        right_chains_repr = torch.stack(
-            [torch.mean(torch.stack(chain), dim=0) for chain in right_mentions_repr]
+        right_mentions_repr = tensorize_chains(
+            merged_right.coref_chains, rhidden_states
         ).unsqueeze(0)
-        assert right_chains_repr.shape == (b, m, 2 * h)
+        right_mentions_repr = right_mentions_repr.reshape(b, m, 2, h)
 
-        # TODO: perf
-        mention_pairs_repr = torch.stack(
-            [
-                torch.cat((l, r), dim=1)
-                for l, r in it.product(left_chains_repr, right_chains_repr)
-            ]
+        left_mentions_repr_repeated = left_mentions_repr.repeat(1, m, 1, 1, 1)
+        assert left_mentions_repr_repeated.shape == (b, m, a, 2, h)
+
+        span_bounds_combination = model.mention_pairs_repr(
+            right_mentions_repr, left_mentions_repr_repeated
         )
-        assert mention_pairs_repr.shape == (b, m * a, 4 * h)
+        assert span_bounds_combination.shape == (b, m * a, 4 * h)
 
         # compute distance feature
         seq_size = len(merged_left.tokens) + len(merged_right.tokens)
         spans_idx = spans_indexs(list(range(seq_size)), model.config.max_span_size)
+
         left_mentions_idx = [
             max(m.end_idx for m in chain) for chain in merged_left.coref_chains
         ]
         left_mentions_idx = torch.tensor(left_mentions_idx).unsqueeze(0)
+        assert left_mentions_idx.shape == (b, a)
 
         roffset = len(merged_left.tokens)
         right_mentions_idx = [
-            min(m.start_idx for m in chain) for chain in merged_right.coref_chains
+            min(m.start_idx + roffset for m in chain)
+            for chain in merged_right.coref_chains
         ]
-        right_mentions_idx = merged_right.mapmentions(
-            lambda m: spans_idx.index((m.start_idx + roffset, m.end_idx + roffset))
-        )
         right_mentions_idx = torch.tensor(right_mentions_idx).unsqueeze(0)
+        assert right_mentions_idx.shape == (b, m)
 
         top_antecedents_index = torch.stack(
-            [left_mentions_idx for _ in range(right_mentions_idx.shape[1])]
-        )
+            [left_mentions_idx[0] for _ in range(right_mentions_idx.shape[1])]
+        ).unsqueeze(0)
+        assert top_antecedents_index.shape == (b, m, a)
 
         spans_nb = len(spans_idx)
         dist_ft = model.distance_feature(
@@ -118,39 +140,51 @@ def merge_coref_outputs(
         )
         dist_ft = torch.flatten(dist_ft, start_dim=1, end_dim=2)
 
-        mention_pairs_repr = torch.cat((mention_pairs_repr, dist_ft), dim=2)
-        compat = model.mention_compatibility_score(
+        mention_pairs_repr = torch.cat((span_bounds_combination, dist_ft), dim=2)
+        compat_score = model.mention_compatibility_score(
             torch.flatten(mention_pairs_repr, start_dim=0, end_dim=1)
         )
-        assert compat.shape == (b * m * a,)
-        compat = compat.reshape(b, m, a)
+        assert compat_score.shape == (b * m * a,)
+        compat_score = compat_score.reshape(b, m, a)
 
-        # - Should we assume mention score is 1?
-        # - What is the range of the compat score?
-        # from what I remember mention_score + pair_score should be < 0 if no match...
-        # => let's assume that for now and forget about mention_score. Seems (not) legit.
-        # Also, at MOST each cluster must correspond to another
-        # cluster. this looks like bipartite matching. Let's ignore that
-        # and do it greedily?
+        mention_score = torch.tensor(
+            [
+                [
+                    mean([mention.mention_score for mention in rchain])  # type: ignore
+                    + mean([mention.mention_score for mention in lchain])  # type: ignore
+                    for lchain in merged_left.coref_chains
+                ]
+                for rchain in merged_right.coref_chains
+            ]
+        ).unsqueeze(0)
+        assert mention_score.shape == (b, m, a)
+
+        final_score = compat_score + mention_score
+
+        # At MOST each cluster must correspond to another
+        # cluster. this looks like bipartite matching. For now we
+        # ignore that and do it greedily
         left_offset = len(merged_left.tokens)
-        right_chains_remaining = set(range(len(merged_right.coref_chains)))
+        merged_right_chains = set()
         new_chains = []
-        for left_chain, scores in zip(merged_left.coref_chains, compat):
-            scores[torch.tensor(list(right_chains_remaining))] = float("-Inf")
-            best_score = torch.max(scores, dim=1)
-            if best_score.values[0] < 0.0:
+        for left_chain_i, left_chain in enumerate(merged_left.coref_chains):
+            scores = final_score[0, :, left_chain_i]
+            scores[torch.tensor(list(merged_right_chains), dtype=torch.long)] = float(
+                "-Inf"
+            )
+            best_score = torch.max(scores, dim=0)
+            if best_score.values.item() < 0.0:
                 new_chains.append(left_chain)
                 continue
-            r_chain_i = best_score.indices[0]
+            r_chain_i = best_score.indices.item()
             right_chain = merged_right.coref_chains[r_chain_i]
             new_chains.append(
                 left_chain + [m.shifted(left_offset) for m in right_chain]
             )
-            right_chains_remaining.remove(r_chain_i)
-        for r_chain_i in right_chains_remaining:
-            new_chains.append(
-                [m.shifted(left_offset) for m in merged_right.coref_chains[r_chain_i]]
-            )
+            merged_right_chains.add(r_chain_i)
+        for r_chain_i, r_chain in enumerate(merged_right.coref_chains):
+            if not r_chain_i in merged_right_chains:
+                new_chains.append([m.shifted(left_offset) for m in r_chain])
 
     return CoreferenceDocument(merged_left.tokens + merged_right.tokens, new_chains)
 
@@ -321,9 +355,18 @@ def predict_coref(
             batch_size = batch["input_ids"].shape[0]
             seq_size = batch["input_ids"].shape[1]
             for batch_i in range(batch_size):
-                wp_to_token += [
-                    batch.token_to_word(batch_i, token_index=i) for i in range(seq_size)
-                ]
+                # we need to shift the index of tokens in the batch by
+                # the index of the last token of the previous batch
+                max_prev_wp_to_token = (
+                    0
+                    if len(wp_to_token) == 0
+                    else max([wtt for wtt in wp_to_token if not wtt is None], default=0)
+                )
+                for i in range(seq_size):
+                    wtt = batch.token_to_word(batch_i, token_index=i)
+                    if not wtt is None and max_prev_wp_to_token != 0:
+                        wtt += max_prev_wp_to_token + 1
+                    wp_to_token.append(wtt)
 
         merged_doc_wpieced = merge_coref_outputs(docs, hidden_states, model)
         assert not merged_doc_wpieced is None  # we know that len(docs) > 0
