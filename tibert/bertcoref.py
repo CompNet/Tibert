@@ -1200,7 +1200,9 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
         selected_dist = batch_index_select(dist, 1, top_mentions_index)
         assert selected_dist.shape == (b, m, p)
         selected_dist = batch_index_select(
-            dist.flatten(start_dim=1), 1, top_antecedents_index.flatten(start_dim=1)
+            selected_dist.flatten(start_dim=1),
+            1,
+            top_antecedents_index.flatten(start_dim=1),
         ).reshape(b, m, a)
         selected_dist[selected_dist <= 0] = float("Inf")
 
