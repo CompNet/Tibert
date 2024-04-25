@@ -233,10 +233,7 @@ class CoreferenceDocument:
             new_chain = []
 
             for mention in chain:
-                try:
-                    new_start_idx = wp_to_token[mention.start_idx]
-                except IndexError:
-                    breakpoint()
+                new_start_idx = wp_to_token[mention.start_idx]
                 new_end_idx = wp_to_token[mention.end_idx - 1]
                 # NOTE: this happens in case the model has predicted
                 # an erroneous mention such as '[CLS]' or '[SEP]'. In
