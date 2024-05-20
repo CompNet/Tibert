@@ -70,6 +70,7 @@ def batch_index_select(
 def split_coreference_document(
     document: CoreferenceDocument, sents_nb: int
 ) -> List[CoreferenceDocument]:
+    """Split a coreference document using sentences as delimitation"""
     from tibert import CoreferenceDocument, Mention
 
     punctuation_indexs = []
@@ -107,6 +108,29 @@ def split_coreference_document(
     return documents
 
 
+def split_coreference_document_bytokens(
+    document: CoreferenceDocument, tokens_nb: int
+) -> List[CoreferenceDocument]:
+    from tibert.bertcoref import CoreferenceDocument
+
+    documents = []
+    for start in range(0, len(document.tokens), tokens_nb):
+        end = start + tokens_nb
+        tokens = document.tokens[start:end]
+        coref_chains = [
+            [
+                mention.shifted(-start)
+                for mention in chain
+                if mention.start_idx >= start and mention.end_idx <= end
+            ]
+            for chain in document.coref_chains
+        ]
+        coref_chains = [c for c in coref_chains if not len(c) == 0]
+        documents.append(CoreferenceDocument(tokens, coref_chains))
+
+    return documents
+
+
 def pprint_coreference_document(doc: CoreferenceDocument):
     """Pretty-print a coreference document on the terminal."""
 
@@ -120,7 +144,6 @@ def pprint_coreference_document(doc: CoreferenceDocument):
     out = []
 
     for token_i, token in enumerate(doc.tokens):
-
         related_mentions = [
             (chain_i, start_i, end_i)
             for chain_i, start_i, end_i in mentions
