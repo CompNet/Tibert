@@ -1,8 +1,3 @@
-# Current Status
-
-**Note that this is an early release. Don't hesitate to report bugs/possible improvements! There are surely many.**
-
-
 # Tibert
 
 `Tibert` is a transformers-compatible reproduction from the paper [End-to-end Neural Coreference Resolution](https://aclanthology.org/D17-1018/) with several modifications. Among these:
@@ -10,7 +5,8 @@
 - Usage of BERT (or any BERT variant) as an encoder as in [BERT for Coreference Resolution: Baselines and Analysis](https://aclanthology.org/D19-1588/)
 - batch size can be greater than 1
 - Support of singletons as in [Adapted End-to-End Coreference Resolution System for Anaphoric Identities in Dialogues](https://aclanthology.org/2021.codi-sharedtask.6)
-  
+- Hierarchical merging as in [Coreference in Long Documents using Hierarchical Entity Merging](https://aclanthology.org/2024.latechclfl-1.2/)
+
   
 It can be installed with `pip install tibert`.
 
@@ -88,6 +84,41 @@ print(annotated_doc.coref_chains)
 ```
 
 `>>>[[Mention(tokens=['The', 'princess'], start_idx=11, end_idx=13), Mention(tokens=['Princess', 'Liana'], start_idx=0, end_idx=2)], [Mention(tokens=['Zarth', 'Arn'], start_idx=6, end_idx=8)]]`
+
+
+## Hierarchical Merging
+
+Hierarchical merging allows to reduce RAM usage and computations when performing inference on long documents. To do so, the user provides the text cut in chunks. The model will perform prediction for chunks, which means the long document wont be taken at once into memory. Then, hierarchical merging will try to merge chunk predictions. This allow scaling to arbitrarily large documents. See [Coreference in Long Documents using Hierarchical Entity Merging](https://aclanthology.org/2024.latechclfl-1.2/) for more details.
+
+Hierarchical merging can be used as follows:
+
+```python
+from tibert import BertForCoreferenceResolution, predict_coref
+from tibert.utils import pprint_coreference_document
+from transformers import BertTokenizerFast
+
+model = BertForCoreferenceResolution.from_pretrained(
+    "compnet-renard/bert-base-cased-literary-coref"
+)
+tokenizer = BertTokenizerFast.from_pretrained("bert-base-cased")
+
+chunk1 = "Princess Liana felt sad, because Zarth Arn was gone."
+chunk2 = "She went to sleep."
+
+annotated_doc = predict_coref(
+    [chunk1, chunk2], model, tokenizer, hierarchical_merging=True
+)
+
+pprint_coreference_document(annotated_doc)
+```
+
+This results in:
+
+`>>>(1 Princess Liana ) felt sad , because (0 Zarth Arn ) was gone . (1 She ) went to sleep .`
+
+Even if the mentions `Princess Liana` and `She` are not in the same chunk, hierarchical merging still resolves this case correctly.
+
+*Note that, at the time of writing, the performance of the hierarchical merging feature has not been benchmarked*.
 
 
 ## Training a model
