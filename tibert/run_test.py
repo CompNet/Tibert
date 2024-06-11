@@ -78,12 +78,13 @@ def main(
         dataset_path, tokenizer, max_span_size
     )
     _, test_dataset = dataset.splitted(0.9)
-    test_dataset.limit_doc_size_(11)
 
     all_annotated_docs = []
     for document in tqdm(test_dataset.documents):
         doc_dataset = CoreferenceDataset(
-            split_coreference_document_tokens(document, 128), tokenizer, max_span_size
+            split_coreference_document_tokens(document, 512),
+            tokenizer,
+            max_span_size,
         )
         if hierarchical_merging:
             annotated_doc = predict_coref(
