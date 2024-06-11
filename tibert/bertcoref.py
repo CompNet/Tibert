@@ -26,6 +26,7 @@ from tibert.utils import (
     batch_index_select,
     spans,
     split_coreference_document,
+    split_coreference_document_tokens,
 )
 
 
@@ -602,6 +603,16 @@ class CoreferenceDataset(Dataset):
         self.documents = list(
             flatten(
                 [split_coreference_document(doc, sents_nb) for doc in self.documents]
+            )
+        )
+
+    def limit_doc_size_tokens_(self, tokens_nb: int):
+        self.documents = list(
+            flatten(
+                [
+                    split_coreference_document_tokens(doc, tokens_nb)
+                    for doc in self.documents
+                ]
             )
         )
 

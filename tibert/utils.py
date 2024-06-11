@@ -107,6 +107,39 @@ def split_coreference_document(
     return documents
 
 
+def split_coreference_document_tokens(
+    document: CoreferenceDocument, tokens_nb: int
+) -> List[CoreferenceDocument]:
+    from tibert import CoreferenceDocument, Mention
+
+    token_blocks = [
+        document.tokens[block_start : block_start + tokens_nb]
+        for block_start in range(0, len(document.tokens), tokens_nb)
+    ]
+
+    documents = []
+    block_start = 0
+    for block in token_blocks:
+        block_end = block_start + tokens_nb
+        coref_chains = [
+            [
+                Mention(
+                    mention.tokens,
+                    mention.start_idx - block_start,
+                    mention.end_idx - block_start,
+                )
+                for mention in chain
+                if mention.start_idx >= block_start and mention.end_idx <= block_end
+            ]
+            for chain in document.coref_chains
+        ]
+        coref_chains = [c for c in coref_chains if not len(c) == 0]
+        documents.append(CoreferenceDocument(block, coref_chains))
+        block_start += tokens_nb
+
+    return documents
+
+
 def pprint_coreference_document(doc: CoreferenceDocument):
     """Pretty-print a coreference document on the terminal."""
 
