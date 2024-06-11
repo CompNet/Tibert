@@ -16,6 +16,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from sacremoses import MosesTokenizer
 from more_itertools.recipes import flatten
+import numpy as np
 import torch
 from torch.nn.parameter import Parameter
 from torch.utils.data import Dataset
@@ -48,10 +49,12 @@ class Mention:
     mention_score: Optional[float] = None
 
     def shifted(self, shift: int) -> Mention:
-        self_dict = vars(self)
-        self_dict["start_idx"] = self.start_idx + shift
-        self_dict["end_idx"] = self.end_idx + shift
-        return self.__class__(**self_dict)
+        return self.__class__(
+            self.tokens,
+            self.start_idx + shift,
+            self.end_idx + shift,
+            self.mention_score,
+        )
 
     def __eq__(self, other: Mention) -> bool:
         return (
@@ -79,22 +82,26 @@ class CoreferenceDocument:
             coreferent mention if span i. when ``j == spans_nb``,
             i has no preceding coreferent mention.
         """
-        spans_idx = spans_indexs(self.tokens, max_span_size)
+        spans_idx = {
+            indices: i
+            for i, indices in enumerate(spans_indexs(self.tokens, max_span_size))
+        }
         spans_nb = len(spans_idx)
 
-        labels = [[0] * (spans_nb + 1) for _ in range(spans_nb)]
+        # labels = [[0] * (spans_nb + 1) for _ in range(spans_nb)]
+        labels = np.zeros((spans_nb, spans_nb + 1))
 
         # spans in a coref chain : mark all antecedents
         for chain in self.coref_chains:
             for mention in chain:
                 try:
-                    mention_idx = spans_idx.index((mention.start_idx, mention.end_idx))
+                    mention_idx = spans_idx[(mention.start_idx, mention.end_idx)]
                     for other_mention in chain:
                         if other_mention == mention:
                             continue
-                        other_mention_idx = spans_idx.index(
+                        other_mention_idx = spans_idx[
                             (other_mention.start_idx, other_mention.end_idx)
-                        )
+                        ]
                         labels[mention_idx][other_mention_idx] = 1
                 # ValueError happens if the mention does not exist in
                 # spans_idx. This is possible since the mention can be
@@ -105,10 +112,10 @@ class CoreferenceDocument:
         # spans without preceding mentions : mark preceding mention to
         # be the null span
         for i in range(len(labels)):
-            if all(l == 0 for l in labels[i]):
+            if labels[i].sum() == 0:
                 labels[i][spans_nb] = 1
 
-        return labels
+        return labels.tolist()
 
     def mention_labels(self, max_span_size: int) -> List[int]:
         """
@@ -310,6 +317,18 @@ class CoreferenceDocument:
         return CoreferenceDocument(tokens, chains)
 
     T = TypeVar("T")
+
+    @staticmethod
+    def concatenated(docs: list[CoreferenceDocument]) -> CoreferenceDocument:
+        tokens = []
+        chains = []
+        for doc in docs:
+            chains += [
+                [mention.shifted(len(tokens)) for mention in chain]
+                for chain in doc.coref_chains
+            ]
+            tokens += doc.tokens
+        return CoreferenceDocument(tokens, chains)
 
     def mapmentions(self, fn: Callable[[Mention], T]) -> List[List[T]]:
         return [[fn(mention) for mention in chain] for chain in self.coref_chains]

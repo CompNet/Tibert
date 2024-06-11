@@ -28,6 +28,7 @@ def merge_coref_outputs(
     outputs: List[CoreferenceDocument],
     hidden_states: List[torch.FloatTensor],
     model: BertForCoreferenceResolution,
+    device_str: Literal["cpu", "cuda", "auto"] = "auto",
 ) -> Optional[CoreferenceDocument]:
     """Merge coreference clusters as in Gupta et al 2024
 
@@ -41,6 +42,10 @@ def merge_coref_outputs(
     :return: None if outputs is empty, a single merged document
              otherwise
     """
+    if device_str == "auto":
+        device_str = "cuda" if torch.cuda.is_available() else "cpu"
+    device = torch.device(device_str)
+
     assert len(outputs) == len(hidden_states)
 
     if len(outputs) == 0:
@@ -49,12 +54,18 @@ def merge_coref_outputs(
         return outputs[0]
 
     middle = int(len(outputs) / 2)
-    merged_left = merge_coref_outputs(outputs[:middle], hidden_states[:middle], model)
-    merged_right = merge_coref_outputs(outputs[middle:], hidden_states[middle:], model)
+    merged_left = merge_coref_outputs(
+        outputs[:middle], hidden_states[:middle], model, device_str=device_str
+    )
+    merged_right = merge_coref_outputs(
+        outputs[middle:], hidden_states[middle:], model, device_str=device_str
+    )
     assert merged_left and merged_right
 
-    with torch.no_grad():
+    if len(merged_left.coref_chains) == 0 or len(merged_right.coref_chains) == 0:
+        return CoreferenceDocument.concatenated([merged_left, merged_right])
 
+    with torch.no_grad():
         b = 1
         a = len(merged_left.coref_chains)
         m = len(merged_right.coref_chains)
@@ -68,7 +79,6 @@ def merge_coref_outputs(
             :param hidden_states: ``(s, h)``
             :return: a tensor of shape ``(c, 2 * h)``
             """
-
             # (c, 2 * h)
             return torch.stack(
                 [
@@ -126,12 +136,14 @@ def merge_coref_outputs(
             min(m.start_idx + roffset for m in chain)
             for chain in merged_right.coref_chains
         ]
-        right_mentions_idx = torch.tensor(right_mentions_idx).unsqueeze(0)
+        right_mentions_idx = torch.tensor(right_mentions_idx).unsqueeze(0).to(device)
         assert right_mentions_idx.shape == (b, m)
 
-        top_antecedents_index = torch.stack(
-            [left_mentions_idx[0] for _ in range(right_mentions_idx.shape[1])]
-        ).unsqueeze(0)
+        top_antecedents_index = (
+            torch.stack([left_mentions_idx[0] for _ in range(m)])
+            .unsqueeze(0)
+            .to(device)
+        )
         assert top_antecedents_index.shape == (b, m, a)
 
         spans_nb = len(spans_idx)
@@ -147,16 +159,20 @@ def merge_coref_outputs(
         assert compat_score.shape == (b * m * a,)
         compat_score = compat_score.reshape(b, m, a)
 
-        mention_score = torch.tensor(
-            [
+        mention_score = (
+            torch.tensor(
                 [
-                    mean([mention.mention_score for mention in rchain])  # type: ignore
-                    + mean([mention.mention_score for mention in lchain])  # type: ignore
-                    for lchain in merged_left.coref_chains
+                    [
+                        mean([mention.mention_score for mention in rchain])  # type: ignore
+                        + mean([mention.mention_score for mention in lchain])  # type: ignore
+                        for lchain in merged_left.coref_chains
+                    ]
+                    for rchain in merged_right.coref_chains
                 ]
-                for rchain in merged_right.coref_chains
-            ]
-        ).unsqueeze(0)
+            )
+            .unsqueeze(0)
+            .to(device)
+        )
         assert mention_score.shape == (b, m, a)
 
         final_score = compat_score + mention_score
@@ -241,9 +257,7 @@ def _stream_predict_wpieced_coref_raw(
     model = model.to(device)
 
     with torch.no_grad():
-
         for i, batch in enumerate(tqdm(dataloader, disable=quiet)):
-
             local_batch_size = batch["input_ids"].shape[0]
 
             start_idx = batch_size * i
@@ -326,7 +340,6 @@ def predict_coref(
              coreference chains.
     """
     if hierarchical_merging:
-
         docs = []
         hidden_states = []
         all_tokens = []
@@ -368,7 +381,7 @@ def predict_coref(
                         wtt += max_prev_wp_to_token + 1
                     wp_to_token.append(wtt)
 
-        merged_doc_wpieced = merge_coref_outputs(docs, hidden_states, model)
+        merged_doc_wpieced = merge_coref_outputs(docs, hidden_states, model, device_str)
         assert not merged_doc_wpieced is None  # we know that len(docs) > 0
 
         return merged_doc_wpieced.from_wpieced_to_tokenized(all_tokens, wp_to_token)
