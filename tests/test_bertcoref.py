@@ -13,7 +13,7 @@ def bert_tokenizer() -> BertTokenizerFast:
 # we suppress the `function_scoped_fixture` health check since we want
 # to execute the `bert_tokenizer` fixture only once.
 @settings(deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
-@given(doc=coref_docs(min_size=5, max_size=10))
+@given(doc=coref_docs(min_size=5, max_size=10, max_span_size=4))
 def test_doc_is_reconstructed(
     doc: CoreferenceDocument, bert_tokenizer: BertTokenizerFast
 ):

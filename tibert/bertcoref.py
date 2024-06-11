@@ -94,21 +94,23 @@ class CoreferenceDocument:
 
         # spans in a coref chain : mark all antecedents
         for chain in self.coref_chains:
+            # mentions can be longer than max_span_size. We filter
+            # these mentions so that they do not appear in the labels.
+            chain = [m for m in chain if len(m.tokens) <= max_span_size]
+            if len(chain) == 0:
+                continue
             for mention in chain:
-                try:
-                    mention_idx = spans_idx[(mention.start_idx, mention.end_idx)]
-                    for other_mention in chain:
-                        if other_mention == mention:
-                            continue
-                        other_mention_idx = spans_idx[
-                            (other_mention.start_idx, other_mention.end_idx)
-                        ]
-                        labels[mention_idx][other_mention_idx] = 1
-                # ValueError happens if the mention does not exist in
-                # spans_idx. This is possible since the mention can be
-                # larger than max_span_size
-                except ValueError:
-                    continue
+                mention_idx = spans_idx[(mention.start_idx, mention.end_idx)]
+                for other_mention in chain:
+                    if other_mention == mention:
+                        continue
+                    key = (other_mention.start_idx, other_mention.end_idx)
+                    if not key in spans_idx:
+                        continue
+                    other_mention_idx = spans_idx[
+                        (other_mention.start_idx, other_mention.end_idx)
+                    ]
+                    labels[mention_idx][other_mention_idx] = 1
 
         # spans without preceding mentions : mark preceding mention to
         # be the null span
