@@ -8,6 +8,27 @@ if TYPE_CHECKING:
     from tibert.bertcoref import CoreferenceDocument
 
 
+RICH_COLORS = [
+    "red",
+    "green",
+    "yellow",
+    "blue",
+    "magenta",
+    "cyan",
+    "bright_black",
+    "bright_red",
+    "bright_green",
+    "bright_yellow",
+    "bright_magenta",
+    "bright_cyan",
+]
+
+
+def get_cat_color(index: int) -> str:
+    """Get a categorical color from RICH_COLORS"""
+    return RICH_COLORS[index % len(RICH_COLORS)]
+
+
 T = TypeVar("T")
 
 
@@ -164,13 +185,15 @@ def pprint_coreference_document(doc: CoreferenceDocument):
 
         for chain_i, start_i, _ in related_mentions:
             if token_i == start_i:
-                out.append(f"[red]({chain_i}")
+                color = get_cat_color(chain_i)
+                out.append(f"[{color}]({chain_i}")
 
         out.append(token)
 
         for chain_i, _, end_i in related_mentions:
             if token_i == end_i - 1:
-                out.append(f")[/red]")
+                color = get_cat_color(chain_i)
+                out.append(f")[/{color}]")
 
     try:
         console.print(" ".join(out))
