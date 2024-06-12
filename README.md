@@ -177,12 +177,21 @@ Several work make use of additional features. For now, only the distance between
 The following table presents the results we obtained by training this model (for now, it has only one entry !). Note that:
 
 - the reported results use `max_span_size=5` instead of `max_span_size=10` as in training.
-- the reported results were obtained by splitting documents for performance reasons, with subdocuments having a maximum length of 11 sentences. They may not be accurate with the performance on full documents
+- the reported results were obtained by splitting documents for performance reasons, with subdocuments having a maximum length of 11 sentences. They may not be accurate with the performance on full documents.
 - the reported results can not be directly compared to the performance in [the original Litbank paper](https://arxiv.org/abs/1912.01140) since we only compute performance on one split of the datas
 
 | Dataset | Base model        | MUC   | B3    | CEAF  | CoNLL F1 |
 |---------|-------------------|-------|-------|-------|----------|
 | Litbank | `bert-base-cased` | 77.35 | 67.63 | 56.66 | 67.21    |
+
+## Results on full documents
+
+The following table reports our results on the full Litbank documents (~2000 tokens each). We use `max_span_size=10`. HM stand for "Hierarchical Merging":
+
+| Dataset | Base model        | HM  | MUC   | B3    | CEAF  | BLANC | LEA   |
+|---------|-------------------|-----|-------|-------|-------|-------|-------|
+| Litbank | `bert-base-cased` | no  | 72.97 | 48.26 | 46.64 | 47.16 | 27.33 |
+| Litbank | `bert-base-cased` | yes | 72.29 | 51.73 | 46.36 | 55.67 | 35.14 |
 
 
 # Citation
