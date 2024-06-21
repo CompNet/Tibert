@@ -12,6 +12,8 @@ from tibert import (
     CamembertForCoreferenceResolution,
     train_coref_model,
     load_train_checkpoint,
+    predict_coref,
+    score_coref_predictions,
 )
 from tibert.bertcoref import CoreferenceDataset, load_democrat_dataset
 
@@ -29,7 +31,7 @@ def config():
     antecedents_nb: int = 350
     max_span_size: int = 10
     mention_scorer_hidden_size: int = 3000
-    sents_per_documents_train: int = 11
+    tokens_per_document: int = 512
     mention_loss_coeff: float = 0.1
     bert_lr: float = 1e-5
     task_lr: float = 2e-4
@@ -52,7 +54,7 @@ def main(
     antecedents_nb: int,
     max_span_size: int,
     mention_scorer_hidden_size: int,
-    sents_per_documents_train: int,
+    tokens_per_document: int,
     mention_loss_coeff: float,
     bert_lr: float,
     task_lr: float,
@@ -110,14 +112,16 @@ def main(
     dataset: CoreferenceDataset = config["loading_function"](
         dataset_path, tokenizer, max_span_size
     )
-    train_dataset, test_dataset = dataset.splitted(0.9)
-    train_dataset.limit_doc_size_(sents_per_documents_train)
-    test_dataset.limit_doc_size_(11)
+    train_dataset, valid_test_dataset = dataset.splitted(0.8)
+    valid_dataset, test_dataset = valid_test_dataset.splitted(0.5)
+    train_dataset.limit_doc_size_tokens_(tokens_per_document)
+    valid_dataset.limit_doc_size_tokens_(tokens_per_document)
+    test_dataset.limit_doc_size_tokens_(tokens_per_document)
 
     train_coref_model(
         model,
         train_dataset,
-        test_dataset,
+        valid_dataset,
         tokenizer,
         batch_size=batch_size,
         epochs_nb=epochs_nb,
@@ -129,6 +133,24 @@ def main(
         optimizer=optimizer,
         example_tracking_path=example_tracking_path,
     )
+
+    annotated_docs = predict_coref(
+        [doc.tokens for doc in test_dataset.documents],
+        model,
+        tokenizer,
+        hierarchical_merging=False,
+        quiet=True,
+        device_str="cuda",
+        batch_size=batch_size,
+    )
+    assert isinstance(annotated_docs, list)
+
+    metrics = score_coref_predictions(annotated_docs, test_dataset.documents)
+    print(metrics)
+    for key, score_dict in metrics.items():
+        for metric_key, score in score_dict.items():
+            print(f"{key}.{metric_key}={score}")
+            _run.log_scalar(f"test.{key}_{metric_key}", score)
 
 
 if __name__ == "__main__":

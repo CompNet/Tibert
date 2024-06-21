@@ -107,7 +107,7 @@ def _save_append_example_pred(
 def train_coref_model(
     model: Union[BertForCoreferenceResolution, CamembertForCoreferenceResolution],
     train_dataset: CoreferenceDataset,
-    test_dataset: CoreferenceDataset,
+    valid_dataset: CoreferenceDataset,
     tokenizer: Union[BertTokenizerFast, CamembertTokenizerFast],
     batch_size: int = 1,
     epochs_nb: int = 30,
@@ -213,37 +213,37 @@ def train_coref_model(
         # Metrics Computation
         # -------------------
         preds = predict_coref(
-            [doc.tokens for doc in test_dataset.documents],
+            [doc.tokens for doc in valid_dataset.documents],
             model,
             tokenizer,
             batch_size=batch_size,
             device_str=device_str,
         )
-        metrics = score_coref_predictions(preds, test_dataset.documents)
+        metrics = score_coref_predictions(preds, valid_dataset.documents)
 
         conll_f1 = mean(
             [metrics["MUC"]["f1"], metrics["B3"]["f1"], metrics["CEAF"]["f1"]]
         )
         if _run:
-            _run.log_scalar("muc_precision", metrics["MUC"]["precision"])
-            _run.log_scalar("muc_recall", metrics["MUC"]["recall"])
-            _run.log_scalar("muc_f1", metrics["MUC"]["f1"])
-            _run.log_scalar("b3_precision", metrics["B3"]["precision"])
-            _run.log_scalar("b3_recall", metrics["B3"]["recall"])
-            _run.log_scalar("b3_f1", metrics["B3"]["f1"])
-            _run.log_scalar("ceaf_precision", metrics["CEAF"]["precision"])
-            _run.log_scalar("ceaf_recall", metrics["CEAF"]["recall"])
-            _run.log_scalar("ceaf_f1", metrics["CEAF"]["f1"])
-            _run.log_scalar("conll_f1", conll_f1)
+            _run.log_scalar("validation.muc_precision", metrics["MUC"]["precision"])
+            _run.log_scalar("validation.muc_recall", metrics["MUC"]["recall"])
+            _run.log_scalar("validation.muc_f1", metrics["MUC"]["f1"])
+            _run.log_scalar("validation.b3_precision", metrics["B3"]["precision"])
+            _run.log_scalar("validation.b3_recall", metrics["B3"]["recall"])
+            _run.log_scalar("validation.b3_f1", metrics["B3"]["f1"])
+            _run.log_scalar("validation.ceaf_precision", metrics["CEAF"]["precision"])
+            _run.log_scalar("validation.ceaf_recall", metrics["CEAF"]["recall"])
+            _run.log_scalar("validation.ceaf_f1", metrics["CEAF"]["f1"])
+            _run.log_scalar("validation.conll_f1", conll_f1)
         print(metrics)
 
         m_precision, m_recall, m_f1 = score_mention_detection(
-            preds, test_dataset.documents
+            preds, valid_dataset.documents
         )
         if _run:
-            _run.log_scalar("mention_detection_precision", m_precision)
-            _run.log_scalar("mention_detection_recall", m_recall)
-            _run.log_scalar("mention_detection_f1", m_f1)
+            _run.log_scalar("validation.mention_detection_precision", m_precision)
+            _run.log_scalar("validation.mention_detection_recall", m_recall)
+            _run.log_scalar("validation.mention_detection_f1", m_f1)
         print(
             f"mention detection metrics: (precision: {m_precision}, recall: {m_recall}, f1: {m_f1})"
         )
@@ -252,7 +252,7 @@ def train_coref_model(
         # --------------------------
         if not example_tracking_path is None:
             _save_append_example_pred(
-                example_tracking_path, model, tokenizer, test_dataset.documents[1]
+                example_tracking_path, model, tokenizer, valid_dataset.documents[1]
             )
 
         # Model saving
