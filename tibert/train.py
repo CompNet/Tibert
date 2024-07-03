@@ -151,7 +151,7 @@ def train_coref_model(
     model = model.to(device)
 
     data_collator = DataCollatorForSpanClassification(
-        tokenizer, model.config.max_span_size
+        tokenizer, model.config.max_span_size, device_str
     )
     train_dataloader = DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True, collate_fn=data_collator
@@ -185,8 +185,6 @@ def train_coref_model(
 
         data_tqdm = tqdm(train_dataloader)
         for batch in data_tqdm:
-            batch = batch.to(device)
-
             optimizer.zero_grad()
 
             try:
@@ -200,7 +198,8 @@ def train_coref_model(
             out.loss.backward()
             optimizer.step()
 
-            _ = _run and _run.log_scalar("gpu_usage", gpu_memory_usage())
+            if device_str == "cuda":
+                _ = _run and _run.log_scalar("gpu_usage", gpu_memory_usage())
 
             data_tqdm.set_description(f"loss : {out.loss.item()}")
             epoch_losses.append(out.loss.item())

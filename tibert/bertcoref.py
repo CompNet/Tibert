@@ -347,6 +347,7 @@ class DataCollatorForSpanClassification(DataCollatorMixin):
 
     tokenizer: PreTrainedTokenizerBase
     max_span_size: int
+    device: Literal["cuda", "cpu"]
     padding: Union[bool, str, PaddingStrategy] = True
     max_length: Optional[int] = None
     label_pad_token_id: int = -100
@@ -408,7 +409,10 @@ class DataCollatorForSpanClassification(DataCollatorMixin):
         batch["mention_labels"] = [mention_labels for _, mention_labels in labels]
 
         return BatchEncoding(
-            {k: torch.tensor(v, dtype=torch.int64) for k, v in batch.items()},
+            {
+                k: torch.tensor(v, dtype=torch.int64, device=torch.device(self.device))
+                for k, v in batch.items()
+            },
             encoding=batch.encodings,
         )
 

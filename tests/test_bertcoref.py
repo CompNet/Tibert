@@ -20,7 +20,7 @@ def test_doc_is_reconstructed(
     max_span_size = min(4, len(doc))
     prep_doc, batch = doc.prepared_document(bert_tokenizer, max_span_size)
     print(prep_doc)
-    collator = DataCollatorForSpanClassification(bert_tokenizer, max_span_size)
+    collator = DataCollatorForSpanClassification(bert_tokenizer, max_span_size, "cpu")
     batch = collator([batch])
     seq_size = batch["input_ids"].shape[1]
     wp_to_token = [batch.token_to_word(0, token_index=i) for i in range(seq_size)]

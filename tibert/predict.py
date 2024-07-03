@@ -248,7 +248,9 @@ def _stream_predict_wpieced_coref_raw(
         tokenizer,
         model.config.max_span_size,
     )
-    data_collator = DataCollatorForSpanClassification(tokenizer, model.config.max_span_size)  # type: ignore
+    data_collator = DataCollatorForSpanClassification(
+        tokenizer, model.config.max_span_size, device_str
+    )
     dataloader = DataLoader(
         dataset, batch_size=batch_size, collate_fn=data_collator, shuffle=False
     )
