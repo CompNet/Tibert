@@ -76,12 +76,12 @@ class CoreferenceDocument:
     def __len__(self) -> int:
         return len(self.tokens)
 
-    def coref_labels(self, max_span_size: int) -> List[List[int]]:
+    def coref_labels(self, max_span_size: int) -> torch.Tensor:
         """
-        :return: a list of shape ``(spans_nb, spans_nb + 1)``.
-            when ``out[i][j] == 1``, span j is the preceding
-            coreferent mention if span i. when ``j == spans_nb``,
-            i has no preceding coreferent mention.
+        :return: a sparse COO tensor of shape ``(spans_nb, spans_nb +
+                 1)``.  when ``out[i][j] == 1``, span j is the
+                 preceding coreferent mention if span i.  when ``j ==
+                 spans_nb``, i has no preceding coreferent mention.
         """
         spans_idx = {
             indices: i
@@ -89,8 +89,8 @@ class CoreferenceDocument:
         }
         spans_nb = len(spans_idx)
 
-        # labels = [[0] * (spans_nb + 1) for _ in range(spans_nb)]
-        labels = np.zeros((spans_nb, spans_nb + 1))
+        label_indices = []
+        label_values = []
 
         # spans in a coref chain : mark all antecedents
         for chain in self.coref_chains:
@@ -110,24 +110,35 @@ class CoreferenceDocument:
                     other_mention_idx = spans_idx[
                         (other_mention.start_idx, other_mention.end_idx)
                     ]
-                    labels[mention_idx][other_mention_idx] = 1
+                    label_indices.append([mention_idx, other_mention_idx])
+                    label_values.append(1)
+
+        if len(label_indices) == 0:
+            labels_t = torch.sparse_coo_tensor(size=(spans_nb, spans_nb))  # type: ignore
+        else:
+            labels_t = torch.sparse_coo_tensor(
+                torch.tensor(label_indices).t(), label_values, (spans_nb, spans_nb)
+            )
 
         # spans without preceding mentions : mark preceding mention to
         # be the null span
-        for i in range(len(labels)):
-            if labels[i].sum() == 0:
-                labels[i][spans_nb] = 1
+        null_t = torch.zeros(spans_nb, 1)
+        for i in range(spans_nb):
+            if labels_t[i].sum() == 0:
+                null_t[i][0] = 1
+        labels_t = torch.cat([labels_t, null_t.to_sparse_coo()], dim=1)
+        assert labels_t.shape == (spans_nb, spans_nb + 1)
 
-        return labels.tolist()
+        return labels_t
 
-    def mention_labels(self, max_span_size: int) -> List[int]:
+    def mention_labels(self, max_span_size: int) -> torch.Tensor:
         """
         :return: a list of shape ``(spans_nb)``
         """
         spans_idx = spans_indexs(self.tokens, max_span_size)
         spans_nb = len(spans_idx)
 
-        labels = [0 for _ in range(spans_nb)]
+        labels = torch.zeros(spans_nb)
 
         for chain in self.coref_chains:
             for mention in chain:
@@ -142,7 +153,7 @@ class CoreferenceDocument:
 
         return labels
 
-    def document_labels(self, max_span_size: int) -> Tuple[List[List[int]], List[int]]:
+    def document_labels(self, max_span_size: int) -> Tuple[torch.Tensor, torch.Tensor]:
         return (self.coref_labels(max_span_size), self.mention_labels(max_span_size))
 
     def prepared_document(
@@ -272,14 +283,14 @@ class CoreferenceDocument:
     @staticmethod
     def from_labels(
         tokens: List[str],
-        coref_labels: List[List[int]],
-        mention_labels: List[int],
+        coref_labels: torch.Tensor,
+        mention_labels: torch.Tensor,
         max_span_size: int,
     ) -> CoreferenceDocument:
         """Construct a CoreferenceDocument using labels
 
         :param tokens:
-        :param coref_labels: ``(spans_nb, spans_nb + 1)``
+        :param coref_labels: sparse tensor of shape ``(spans_nb, spans_nb + 1)``
         :param mention_labels: ``(spans_nb)``
         :param max_span_size:
         """
@@ -403,18 +414,25 @@ class DataCollatorForSpanClassification(DataCollatorMixin):
 
         for document, tokens in zip(documents, batch["input_ids"]):  # type: ignore
             document.tokens = tokens
-
         labels = [doc.document_labels(self.max_span_size) for doc in documents]
-        batch["coref_labels"] = [coref_labels for coref_labels, _ in labels]
-        batch["mention_labels"] = [mention_labels for _, mention_labels in labels]
 
-        return BatchEncoding(
+        del batch["coref_labels"]
+        del batch["mention_labels"]
+        batch = BatchEncoding(
             {
                 k: torch.tensor(v, dtype=torch.int64, device=torch.device(self.device))
                 for k, v in batch.items()
             },
             encoding=batch.encodings,
         )
+        batch["coref_labels"] = torch.stack(
+            [coref_labels for coref_labels, _ in labels]
+        )
+        batch["mention_labels"] = torch.stack(
+            [mention_labels for _, mention_labels in labels]
+        )
+
+        return batch
 
 
 class CoreferenceDataset(Dataset):
@@ -1346,7 +1364,7 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
         :param attention_mask: a tensor of shape ``(b, s)``
         :param token_type_ids: a tensor of shape ``(b, s)``
         :param position_ids: a tensor of shape ``(b, s)``
-        :param coref_labels: a tensor of shape ``(b, p, p)``
+        :param coref_labels: a sparse tensor of shape ``(b, p, p)``
         :param mention_labels: a tensor of shape ``(b, p)``
         :param return_hidden_state: if ``True``, set the hidden_state of
             ``BertCoreferenceResolutionOutput``
@@ -1478,17 +1496,32 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
         # -- loss computation --
         loss = None
         if coref_labels is not None and mention_labels is not None:
+
             # -- coref loss
-            selected_coref_labels = batch_index_select(
-                coref_labels, 1, top_mentions_index
+
+            # NOTE: we have to rely on such a loop, as torch.gather
+            # cannot be used on sparse tensors, which prevents using
+            # batch_index_select
+            selected_coref_labels = torch.stack(
+                [
+                    torch.index_select(coref_labels[b_i], 0, top_mentions_index[b_i])
+                    for b_i in range(b)
+                ]
             )
             assert selected_coref_labels.shape == (b, m, p + 1)
 
+            # NOTE: ideally, we should convert selected_mention_labels
+            # to a dense tensor _after_ the selection, with a tensor
+            # of shape (b, m, a). However, since we can't flatten a
+            # sparse tensor, we did not find a way to write the
+            # selection below using a sparse tensor.
+            selected_coref_labels = selected_coref_labels.to_dense()
             selected_coref_labels = batch_index_select(
                 selected_coref_labels.flatten(start_dim=0, end_dim=1),
                 1,
                 top_antecedents_index,
             ).reshape(b, m, a)
+            assert selected_coref_labels.shape == (b, m, a)
 
             # mentions with no antecedents are assumed to have the dummy antecedent
             dummy_labels = (1 - selected_coref_labels).prod(-1, keepdim=True)
