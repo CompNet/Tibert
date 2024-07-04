@@ -416,21 +416,22 @@ class DataCollatorForSpanClassification(DataCollatorMixin):
             document.tokens = tokens
         labels = [doc.document_labels(self.max_span_size) for doc in documents]
 
+        device = torch.device(self.device)
         del batch["coref_labels"]
         del batch["mention_labels"]
         batch = BatchEncoding(
             {
-                k: torch.tensor(v, dtype=torch.int64, device=torch.device(self.device))
+                k: torch.tensor(v, dtype=torch.int64, device=device)
                 for k, v in batch.items()
             },
             encoding=batch.encodings,
         )
         batch["coref_labels"] = torch.stack(
             [coref_labels for coref_labels, _ in labels]
-        )
+        ).to(device)
         batch["mention_labels"] = torch.stack(
             [mention_labels for _, mention_labels in labels]
-        )
+        ).to(device)
 
         return batch
 
