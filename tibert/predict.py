@@ -205,7 +205,7 @@ def merge_coref_outputs(
     return CoreferenceDocument(merged_left.tokens + merged_right.tokens, new_chains)
 
 
-def _stream_predict_wpieced_coref_raw(
+def _stream_predict_coref_raw(
     documents: List[Union[str, List[str]]],
     model: BertForCoreferenceResolution,
     tokenizer: PreTrainedTokenizerFast,
@@ -292,7 +292,7 @@ def stream_predict_coref(
     :return: a list of ``CoreferenceDocument``, with annotated
              coreference chains.
     """
-    for out_docs, _ in _stream_predict_wpieced_coref_raw(
+    for out_docs, _ in _stream_predict_coref_raw(
         documents, model, tokenizer, batch_size, quiet, device_str, lang
     ):
         for out_doc in out_docs:
@@ -332,7 +332,7 @@ def predict_coref(
         if len(documents) == 0:
             return None
 
-        for out_docs, out in _stream_predict_wpieced_coref_raw(
+        for out_docs, out in _stream_predict_coref_raw(
             documents,
             model,
             tokenizer,

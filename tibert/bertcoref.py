@@ -872,7 +872,14 @@ class BertCoreferenceResolutionOutput:
             G = nx.Graph()
             for m_j in range(top_mentions_nb):
                 span_i = int(self.top_mentions_index[b_i][m_j].item())
-                span_coords = spans_idx[span_i]
+                # it is possible to have a top span that does not
+                # actually exist in a batch sample. This is because
+                # padding is done on wordpieces but not on words. In
+                # that case, we simply ignore that predicted span.
+                try:
+                    span_coords = spans_idx[span_i]
+                except IndexError:
+                    continue
 
                 mention_score = float(self.mentions_scores[b_i][span_i].item())
                 span_mention = Mention(
