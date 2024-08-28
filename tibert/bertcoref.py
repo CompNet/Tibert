@@ -16,12 +16,10 @@ from pathlib import Path
 from dataclasses import dataclass
 from sacremoses import MosesTokenizer
 from more_itertools.recipes import flatten
-import numpy as np
 import torch
 from torch.nn.parameter import Parameter
 from torch.utils.data import Dataset
-from torch.utils.data.dataloader import DataLoader
-from transformers import PreTrainedModel, BertPreTrainedModel  # type: ignore
+from transformers import BertPreTrainedModel  # type: ignore
 from transformers import PreTrainedTokenizerFast  # type: ignore
 from transformers.file_utils import PaddingStrategy
 from transformers.data.data_collator import DataCollatorMixin
@@ -157,7 +155,10 @@ class CoreferenceDocument:
         return (self.coref_labels(max_span_size), self.mention_labels(max_span_size))
 
     def prepared_document(
-        self, tokenizer: PreTrainedTokenizerFast, max_span_size: int
+        self,
+        tokenizer: PreTrainedTokenizerFast,
+        max_span_size: int,
+        mode: Literal["train", "test"] = "train",
     ) -> Tuple[CoreferenceDocument, BatchEncoding]:
         """Prepare a document for being inputted into a model.  The
         document is retokenized thanks to ``tokenizer``, and
@@ -169,6 +170,10 @@ class CoreferenceDocument:
             method. This means special tokens will be added.
 
         :param tokenizer: tokenizer used to retokenized the document
+        :param max_span_size:
+        :param mode: if 'test', dont include labels in the returned
+            :class:`BatchEncoding`
+
         :return: a tuple :
 
                 - a new :class:`CoreferenceDocument`
@@ -222,63 +227,13 @@ class CoreferenceDocument:
                 new_chains.append(new_chain)
 
         document = CoreferenceDocument(tokens, new_chains)
-        coref_labels, mention_labels = document.document_labels(max_span_size)
-        batch["coref_labels"] = coref_labels
-        batch["mention_labels"] = mention_labels
+        if mode == "train":
+            coref_labels, mention_labels = self.document_labels(max_span_size)
+            batch["coref_labels"] = coref_labels
+            batch["mention_labels"] = mention_labels
+        batch["word_ids"] = torch.tensor([-1 if i is None else i for i in words_ids])
 
         return document, batch
-
-    def from_wpieced_to_tokenized(
-        self, tokens: List[str], wp_to_token: List[int]
-    ) -> CoreferenceDocument:
-        """Convert the current document, tokenized with wordpieces, to
-        a document 'normally' tokenized
-
-        :param tokens: the original tokens
-        :param wp_to_token: mapping from wordpiece index to token index
-
-        :return:
-        """
-        # In some cases, output mentions can be produced several
-        # times. This can happen when a mention boundary is expressed
-        # by several wordpiece (for example the wordpiece mentions :
-        # "l ' abbé" and "l '" can both correspond to the regular
-        # mention "l 'abbé". For those cases, we keep only one choice
-        # and assume that predictions for these mentions are
-        # consistent.
-        already_visited_mentions = set()
-
-        new_chains = []
-
-        for chain in self.coref_chains:
-            new_chain = []
-
-            for mention in chain:
-                new_start_idx = wp_to_token[mention.start_idx]
-                new_end_idx = wp_to_token[mention.end_idx - 1]
-                # NOTE: this happens in case the model has predicted
-                # an erroneous mention such as '[CLS]' or '[SEP]'. In
-                # that case, we simply ignore the mention.
-                if new_start_idx is None or new_end_idx is None:
-                    continue
-                new_end_idx += 1
-
-                new_mention = Mention(
-                    tokens[new_start_idx:new_end_idx],
-                    new_start_idx,
-                    new_end_idx,
-                )
-
-                if new_mention in already_visited_mentions:
-                    continue
-
-                new_chain.append(new_mention)
-
-                already_visited_mentions.add(new_mention)
-
-            new_chains.append(new_chain)
-
-        return CoreferenceDocument(tokens, new_chains)
 
     @staticmethod
     def from_labels(
@@ -365,20 +320,6 @@ class DataCollatorForSpanClassification(DataCollatorMixin):
     return_tensors: Literal["pt"] = "pt"
 
     def torch_call(self, features) -> Union[dict, BatchEncoding]:
-        coref_labels = (
-            [feature["coref_labels"] for feature in features]
-            if "coref_labels" in features[0].keys()
-            else None
-        )
-        mention_labels = (
-            [feature["mention_labels"] for feature in features]
-            if "mention_labels" in features[0].keys()
-            else None
-        )
-        assert (coref_labels is None and mention_labels is None) or (
-            coref_labels and mention_labels
-        )
-
         warning_state = self.tokenizer.deprecation_warnings.get(
             "Asking-to-pad-a-fast-tokenizer", False
         )
@@ -387,51 +328,59 @@ class DataCollatorForSpanClassification(DataCollatorMixin):
             features,
             padding=self.padding,
             max_length=self.max_length,
-            # Conversion to tensors will fail if we have labels as
-            # they are not of the same length yet.
-            return_tensors="pt" if coref_labels is None else None,
+            # Conversion to tensors will fail as they are not of the
+            # same length yet.
+            return_tensors=None,
         )
-        self.tokenizer.deprecation_warnings[
-            "Asking-to-pad-a-fast-tokenizer"
-        ] = warning_state
+        self.tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = (
+            warning_state
+        )
 
         # keep encoding info
         batch._encodings = [f.encodings[0] for f in features]
 
-        if coref_labels is None:
-            return batch
-
-        documents = [
-            CoreferenceDocument.from_labels(
-                tokens, coref_labels, mention_labels, max_span_size=self.max_span_size
-            )
-            for tokens, coref_labels, mention_labels in zip(
-                [f["input_ids"] for f in features],
-                [f["coref_labels"] for f in features],
-                [f["mention_labels"] for f in features],
-            )
-        ]
-
-        for document, tokens in zip(documents, batch["input_ids"]):  # type: ignore
-            document.tokens = tokens
-        labels = [doc.document_labels(self.max_span_size) for doc in documents]
-
         device = torch.device(self.device)
-        del batch["coref_labels"]
-        del batch["mention_labels"]
+
+        if "coref_labels" in batch:
+            # TODO: if we can find a better way to pad sparse tensors,
+            # that would be great... At least the big tensor never finds
+            # its way onto the GPU.
+            max_p = max([tens.shape[0] for tens in batch["coref_labels"]])
+            for tens_i, tens in enumerate(batch["coref_labels"]):
+                p = tens.shape[0]
+                if max_p > p:
+                    tens = torch.cat([tens.to_dense(), torch.zeros(max_p - p, p + 1)])
+                    batch["coref_labels"][tens_i] = torch.cat(
+                        [
+                            tens[:, :-1],
+                            torch.zeros(max_p, max_p - p),
+                            tens[:, -1].unsqueeze(1),
+                        ],
+                        dim=1,
+                    ).to_sparse_coo()
+            batch["coref_labels"] = torch.stack(
+                [tens for tens in batch["coref_labels"]]
+            ).to(device)
+
+            batch["mention_labels"] = torch.nn.utils.rnn.pad_sequence(
+                batch["mention_labels"], batch_first=True
+            ).to(device)
+
+        batch["word_ids"] = torch.nn.utils.rnn.pad_sequence(
+            batch["word_ids"], batch_first=True, padding_value=-1
+        ).to(device)
+
         batch = BatchEncoding(
             {
-                k: torch.tensor(v, dtype=torch.int64, device=device)
+                k: (
+                    torch.tensor(v, dtype=torch.int64, device=device)
+                    if not k in ("coref_labels", "mention_labels", "word_ids")
+                    else v
+                )
                 for k, v in batch.items()
             },
             encoding=batch.encodings,
         )
-        batch["coref_labels"] = torch.stack(
-            [coref_labels for coref_labels, _ in labels]
-        ).to(device)
-        batch["mention_labels"] = torch.stack(
-            [mention_labels for _, mention_labels in labels]
-        ).to(device)
 
         return batch
 
@@ -441,6 +390,7 @@ class CoreferenceDataset(Dataset):
     :ivar documents:
     :ivar tokenizer:
     :ivar max_span_len:
+    :ivar mode:
     """
 
     def __init__(
@@ -453,6 +403,13 @@ class CoreferenceDataset(Dataset):
         self.documents = documents
         self.tokenizer = tokenizer
         self.max_span_size = max_span_size
+        self.mode: Literal["train", "test"] = "train"
+
+    def set_test_(self):
+        self.mode = "test"
+
+    def set_train_(self):
+        self.mode = "train"
 
     @staticmethod
     def from_conll2012_file(
@@ -676,7 +633,9 @@ class CoreferenceDataset(Dataset):
 
     def __getitem__(self, index: int) -> BatchEncoding:
         document = self.documents[index]
-        _, batch = document.prepared_document(self.tokenizer, self.max_span_size)
+        _, batch = document.prepared_document(
+            self.tokenizer, self.max_span_size, self.mode
+        )
         return batch
 
 
@@ -850,23 +809,39 @@ def load_ontonotes_dataset(
 
 @dataclass
 class BertCoreferenceResolutionOutput:
-    # (batch_size, top_mentions_nb, antecedents_nb)
+    """Output of BertForCoreferenceResolution
+
+    .. note ::
+
+        We use the following short notation to annotate shapes :
+
+        - b: batch_size
+        - s: seq_size (in wordpieces)
+        - w: seq_size_words (in words)
+        - p: spans_nb
+        - m: top_mentions_nb
+        - a: antecedents_nb
+        - h: hidden_size
+        - t: metadatas_features_size
+    """
+
+    # (b, m, a)
     logits: torch.Tensor
 
-    # (batch_size, top_mentions_nb)
+    # (b, m)
     top_mentions_index: torch.Tensor
 
-    # (batch_size, spans_nb)
+    # (b, p)
     mentions_scores: torch.Tensor
 
-    # (batch_size, top_mentions_nb, antecedents_nb)
+    # (b, m, a)
     top_antecedents_index: torch.Tensor
 
     max_span_size: int
 
     loss: Optional[torch.Tensor] = None
 
-    # (batch_size, seq_size, hidden_size)
+    # (b, w, h)
     hidden_states: Optional[torch.FloatTensor] = None
 
     def coreference_documents(
@@ -875,7 +850,7 @@ class BertCoreferenceResolutionOutput:
         """Extract a :class:`.CoreferenceDocument` list from a
         coreference output.
 
-        :param tokens:
+        :param tokens: the original tokens
 
         :return: a list of :class:`.CoreferenceDocument`, one per
                  batch
@@ -977,7 +952,8 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
         We use the following short notation to annotate shapes :
 
         - b: batch_size
-        - s: seq_size
+        - s: seq_size (in wordpieces)
+        - w: seq_size_words (in words)
         - p: spans_nb
         - m: top_mentions_nb
         - a: antecedents_nb
@@ -1100,7 +1076,7 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
         return self.mention_compatibility_scorer(score).squeeze(-1)
 
     def pruned_mentions_indexs(
-        self, mention_scores: torch.Tensor, seq_size: int, top_mentions_nb: int
+        self, mention_scores: torch.Tensor, words_nb: int, top_mentions_nb: int
     ) -> torch.Tensor:
         """Prune mentions, keeping only the k non-overlapping best of them
 
@@ -1116,7 +1092,7 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
 
 
         :param mention_scores: a tensor of shape ``(b, p)``
-        :param seq_size:
+        :param words_nb:
         :param top_mentions_nb: the maximum number of spans to keep
             during the pruning process
 
@@ -1128,7 +1104,7 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
 
         assert top_mentions_nb <= spans_nb
 
-        spans_idx = spans_indexs(list(range(seq_size)), self.config.max_span_size)
+        spans_idx = spans_indexs(list(range(words_nb)), self.config.max_span_size)
 
         def spans_are_overlapping(
             span1: Tuple[int, int], span2: Tuple[int, int]
@@ -1168,11 +1144,11 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
 
         return mention_indexs
 
-    def distance_between_spans(self, spans_nb: int, seq_size: int) -> torch.Tensor:
+    def distance_between_spans(self, spans_nb: int, words_nb: int) -> torch.Tensor:
         """Compute the indexs of the k closest mentions
 
         :param spans_nb: number of spans in the sequence
-        :param seq_size: size of the sequence
+        :param words_nb: number of words in the sequence
         :return: a tensor of shape ``(p, p)``
         """
         p = spans_nb
@@ -1180,7 +1156,7 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
 
         # a list of spans indices
         # [(start, end), ..., (start, end)]
-        spans_idx = spans_indexs(list(range(seq_size)), self.config.max_span_size)
+        spans_idx = spans_indexs(list(range(words_nb)), self.config.max_span_size)
 
         # (spans_nb,)
         start_idx = torch.tensor([start for start, _ in spans_idx]).to(device)
@@ -1200,16 +1176,16 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
         return dist
 
     def closest_antecedents_indexs(
-        self, spans_nb: int, seq_size: int, antecedents_nb: int
+        self, spans_nb: int, words_nb: int, antecedents_nb: int
     ):
         """Compute the indexs of the k closest mentions
 
         :param spans_nb: number of spans in the sequence
-        :param seq_size: size of the sequence
+        :param words_nb: number of words in the sequence
         :param antecedents_nb: number of antecedents to consider
         :return: a tensor of shape ``(p, a)``
         """
-        dist = self.distance_between_spans(spans_nb, seq_size)
+        dist = self.distance_between_spans(spans_nb, words_nb)
         assert dist.shape == (spans_nb, spans_nb)
 
         # when the distance between a span and a possible antecedent
@@ -1229,24 +1205,24 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
         top_antecedents_index: torch.Tensor,
         top_mentions_index: torch.Tensor,
         spans_nb: int,
-        seq_size: int,
+        words_nb: int,
     ) -> torch.Tensor:
         """Compute the distance feature between two spans
 
         :param top_antecedents_index: ``(b, m, a)``
         :param top_mentions_index: ``(b, m)``
         :param spans_nb:
-        :param seq_size:
+        :param words_nb: number of words in the sequence
 
         :return: ``(b, m, a, t)``
         """
         b, m, a = top_antecedents_index.shape
         t = self.config.metadatas_features_size
         p = spans_nb
-        s = seq_size
+        w = words_nb
         device = next(self.parameters()).device
 
-        dist = self.distance_between_spans(p, s)
+        dist = self.distance_between_spans(p, w)
         dist = dist.unsqueeze(0).repeat(b, 1, 1)
         assert dist.shape == (b, p, p)
 
@@ -1287,7 +1263,6 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
 
         :return: hidden states of the last layer, of shape ``(b, s, h)``
         """
-
         # list[(batch_size, <= segment_size, hidden_size)]
         last_hidden_states = []
 
@@ -1311,6 +1286,48 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
             last_hidden_states.append(out.last_hidden_state)
 
         return torch.cat(last_hidden_states, dim=1)
+
+    def wordreduce_embeddings(
+        self, encoded: torch.Tensor, word_ids: torch.LongTensor
+    ) -> torch.Tensor:
+        """
+        :param encoded: an embedding tensor of shape ``(b, s, h)``
+        :param word_ids: a tensor of shape ``(b, s)``
+        :return: an embedding tensor of shape ``(b, w, h)``
+        """
+        device = next(self.parameters()).device
+        b, _, h = encoded.shape
+
+        word_encoded = []
+        for b_i in range(b):
+            # here is what we want to achieve:
+            #
+            # word_ids ~ [0  0  0  -1   1  1     2  2  ]
+            # encoded  ~ [A  B  C   D   E  F     G  H  ]
+            # =>         [mean(ABC)   mean(EF) mean(GH)]
+            #
+            # To do so we first filter encoded to remove -1s since
+            # they dont correspond to any tokens. Then, we use
+            # torch.index_reduce to achieve mean reduction. At the
+            # time of this writing, torch.index_reduce is in beta so
+            # it will print out a warning! Unfortunately there is no
+            # batched version of torch.index_reduce as far as I
+            # understand, so we do it in a loop :<
+            batch_word_ids = word_ids[b_i]
+            token_mask = batch_word_ids != -1
+            batch_encoded = encoded[b_i][token_mask]
+            batch_word_ids = batch_word_ids[token_mask]
+            words_nb = len(set(batch_word_ids.tolist()))
+            words = torch.zeros(words_nb, h, device=device)
+            words.index_reduce_(
+                0, batch_word_ids, batch_encoded, "mean", include_self=False
+            )
+            word_encoded.append(words)
+
+        # each 2D-tensor in word_encoded is of shape (w_i, h). w_i
+        # varies depending on the batch, so we have to do some
+        # padding!
+        return torch.nn.utils.rnn.pad_sequence(word_encoded, batch_first=True)
 
     def mention_loss(
         self, top_mention_scores: torch.Tensor, mention_labels: torch.Tensor
@@ -1352,6 +1369,7 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
     def forward(
         self,
         input_ids: torch.Tensor,
+        word_ids: torch.LongTensor,
         attention_mask: Optional[torch.Tensor] = None,
         token_type_ids: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.Tensor] = None,
@@ -1362,6 +1380,7 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
     ) -> BertCoreferenceResolutionOutput:
         """
         :param input_ids: a tensor of shape ``(b, s)``
+        :param word_ids: a tensor of shape ``(b, s)``
         :param attention_mask: a tensor of shape ``(b, s)``
         :param token_type_ids: a tensor of shape ``(b, s)``
         :param position_ids: a tensor of shape ``(b, s)``
@@ -1385,11 +1404,14 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
             head_mask=head_mask,
         )
         assert encoded_input.shape == (b, s, h)
+        encoded_input = self.wordreduce_embeddings(encoded_input, word_ids)
+        words_nb = w = encoded_input.shape[1]
+        assert encoded_input.shape == (b, w, h)
 
         # -- span bounds computation --
         # we select starting and ending bounds of spans of length up
         # to self.max_span_size
-        spans_idx = spans(range(seq_size), self.config.max_span_size)
+        spans_idx = spans(range(words_nb), self.config.max_span_size)
         spans_nb = p = len(spans_idx)
         spans_selector = torch.flatten(
             torch.tensor([[span[0], span[-1]] for span in spans_idx], dtype=torch.long)
@@ -1409,9 +1431,11 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
 
         # top_mentions_index is the index of the m best
         # non-overlapping mentions
-        top_mentions_nb = m = int(self.config.mentions_per_tokens * seq_size)
+        top_mentions_nb = m = max(
+            min(1, words_nb), int(self.config.mentions_per_tokens * words_nb)
+        )
         top_mentions_index = self.pruned_mentions_indexs(
-            mention_scores, seq_size, top_mentions_nb
+            mention_scores, words_nb, top_mentions_nb
         )
         # TODO: hack
         top_mentions_nb = m = int(top_mentions_index.shape[1])
@@ -1421,7 +1445,7 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
         # antecedents for each spans
         antecedents_nb = a = min(self.config.antecedents_nb, spans_nb)
         antecedents_index = self.closest_antecedents_indexs(
-            spans_nb, seq_size, antecedents_nb
+            spans_nb, words_nb, antecedents_nb
         )
         antecedents_index = torch.tile(antecedents_index, (batch_size, 1, 1))
         assert antecedents_index.shape == (b, p, a)
@@ -1449,7 +1473,7 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
 
         # distance feature computation
         dist_ft = self.distance_feature(
-            top_antecedents_index, top_mentions_index, spans_nb, seq_size
+            top_antecedents_index, top_mentions_index, spans_nb, words_nb
         )
         dist_ft = torch.flatten(dist_ft, start_dim=1, end_dim=2)
         assert dist_ft.shape == (b, m * a, t)
@@ -1502,7 +1526,7 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
 
             # NOTE: we have to rely on such a loop, as torch.gather
             # cannot be used on sparse tensors, which prevents using
-            # batch_index_select
+            # batch_index_select.
             selected_coref_labels = torch.stack(
                 [
                     torch.index_select(coref_labels[b_i], 0, top_mentions_index[b_i])
