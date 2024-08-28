@@ -902,7 +902,10 @@ class BertCoreferenceResolutionOutput:
                 antecedent_span_i = int(
                     self.top_antecedents_index[b_i][m_j][top_antecedent_idx].item()
                 )
-                antecedent_coords = spans_idx[antecedent_span_i]
+                try:
+                    antecedent_coords = spans_idx[antecedent_span_i]
+                except IndexError:
+                    continue
 
                 antecedent_mention_score = float(
                     self.mentions_scores[b_i][antecedent_span_i].item()
