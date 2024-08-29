@@ -30,6 +30,7 @@ def config():
     dataset_name: str = "litbank"
     dataset_path: str = os.path.expanduser("~/litbank")
     max_span_size: int = 10
+    # in tokens
     limit_doc_size: Optional[int] = None
     hierarchical_merging: bool = False
     device_str: str = "auto"
@@ -95,7 +96,7 @@ def main(
         all_annotated_docs = []
         for document in tqdm(test_dataset.documents):
             doc_dataset = CoreferenceDataset(
-                split_coreference_document_tokens(document, 512),
+                split_coreference_document_tokens(document, limit_doc_size),
                 tokenizer,
                 max_span_size,
             )
