@@ -15,7 +15,7 @@ from tibert.bertcoref import (
     BertForCoreferenceResolution,
     CamembertForCoreferenceResolution,
 )
-from tibert.score import score_coref_predictions
+from tibert.score import score_coref_predictions, score_mention_detection
 from tibert.predict import predict_coref
 from tibert.utils import split_coreference_document_tokens
 
@@ -82,7 +82,7 @@ def main(
     all_annotated_docs = []
     for document in tqdm(test_dataset.documents):
         doc_dataset = CoreferenceDataset(
-            split_coreference_document_tokens(document, 512),
+            [document],
             tokenizer,
             max_span_size,
         )
@@ -109,6 +109,17 @@ def main(
             assert isinstance(annotated_docs, list)
             annotated_doc = CoreferenceDocument.concatenated(annotated_docs)
         all_annotated_docs.append(annotated_doc)
+
+    mention_pre, mention_rec, mention_f1 = score_mention_detection(
+        all_annotated_docs, test_dataset.documents
+    )
+    for metric_key, score in [
+        ("precision", mention_pre),
+        ("recall", mention_rec),
+        ("f1", mention_f1),
+    ]:
+        print(f"mention.{metric_key}={score}")
+        _run.log_scalar(f"mention.{metric_key}", score)
 
     scores = score_coref_predictions(all_annotated_docs, test_dataset.documents)
     for key, score_dict in scores.items():
