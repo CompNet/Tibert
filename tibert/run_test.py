@@ -85,7 +85,7 @@ def main(
 
     if limit_doc_size is None:
         all_annotated_docs = predict_coref(
-            [doc.tokens for doc in dataset.documents],
+            [doc.tokens for doc in test_dataset.documents],
             model,
             tokenizer,
             device_str=device_str,
