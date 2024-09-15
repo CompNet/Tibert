@@ -1093,9 +1093,9 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
         The algorithm works as follows :
 
         1. Sort mentions by individual scores
-        2. Accept mention in orders, from best to worst score, until k of
+        2. Accept mention in order, from best to worst score, until k of
             them are accepted. A mention can only be accepted if no
-            previously accepted span os overlapping with it.
+            previously accepted span is overlapping with it.
 
         See section 5 of the E2ECoref paper and the C++ kernel in the
         E2ECoref repository.
@@ -1119,9 +1119,7 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
         def spans_are_overlapping(
             span1: Tuple[int, int], span2: Tuple[int, int]
         ) -> bool:
-            return (
-                span1[0] < span2[0] and span2[0] <= span1[1] and span1[1] < span2[1]
-            ) or (span2[0] < span1[0] and span1[0] <= span2[1] and span2[1] < span1[1])
+            return not (span1[1] <= span2[0] or span1[0] >= span2[1])
 
         _, sorted_indexs = torch.sort(mention_scores, 1, descending=True)
         # TODO: what if we can't have top_mentions_nb mentions ??
