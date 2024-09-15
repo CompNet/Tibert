@@ -1186,27 +1186,47 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
         return dist
 
     def closest_antecedents_indexs(
-        self, spans_nb: int, words_nb: int, antecedents_nb: int
+        self,
+        top_mentions_index: torch.Tensor,
+        spans_nb: int,
+        words_nb: int,
+        antecedents_nb: int,
     ):
         """Compute the indexs of the k closest mentions
 
+        :param top_mentions_index: a tensor of shape ``(b, m)``
         :param spans_nb: number of spans in the sequence
         :param words_nb: number of words in the sequence
         :param antecedents_nb: number of antecedents to consider
-        :return: a tensor of shape ``(p, a)``
+        :return: a tensor of shape ``(b, p, a)``
         """
+        device = next(self.parameters()).device
+        b, _ = top_mentions_index.shape
+        p = spans_nb
+        a = antecedents_nb
+
         dist = self.distance_between_spans(spans_nb, words_nb)
-        assert dist.shape == (spans_nb, spans_nb)
+        assert dist.shape == (p, p)
 
         # when the distance between a span and a possible antecedent
-        # is 0 or negative, it means the possible antecedents is after
-        # the span. Therefore, it can't be an antecedents. We set
-        # those distances to Inf for torch.topk usage just after
+        # is 0 or negative, it means the possible antecedent is after
+        # the span. Therefore, it can't be an antecedent. We set those
+        # distances to Inf for torch.topk usage just after
         dist[dist <= 0] = float("Inf")
+
+        # discard pruned non-top mentions using the same technique as
+        # above
+        all_indices = torch.tile(torch.arange(spans_nb), (b, 1)).to(device)
+        pruned_mask = ~torch.isin(all_indices, top_mentions_index)
+        assert pruned_mask.shape == (b, p)
+        dist = torch.tile(dist, (b, 1, 1))
+        dist[pruned_mask, :] = float("Inf")  # remove pruned lines
+        dist.swapaxes(1, 2)[pruned_mask, :] = float("Inf")  # remove pruned cols
+        assert dist.shape == (b, p, p)
 
         # top-k closest antecedents
         _, close_indexs = torch.topk(-dist, antecedents_nb)
-        assert close_indexs.shape == (spans_nb, antecedents_nb)
+        assert close_indexs.shape == (b, p, a)
 
         return close_indexs
 
@@ -1455,9 +1475,8 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
         # antecedents for each spans
         antecedents_nb = a = min(self.config.antecedents_nb, spans_nb)
         antecedents_index = self.closest_antecedents_indexs(
-            spans_nb, words_nb, antecedents_nb
+            top_mentions_index, spans_nb, words_nb, antecedents_nb
         )
-        antecedents_index = torch.tile(antecedents_index, (batch_size, 1, 1))
         assert antecedents_index.shape == (b, p, a)
 
         # -- mention compatibility scores computation --
