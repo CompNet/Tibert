@@ -1088,14 +1088,14 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
     def pruned_mentions_indexs(
         self, mention_scores: torch.Tensor, words_nb: int, top_mentions_nb: int
     ) -> torch.Tensor:
-        """Prune mentions, keeping only the k non-overlapping best of them
+        """Prune mentions, keeping only the k non-crossing best of them
 
         The algorithm works as follows :
 
         1. Sort mentions by individual scores
         2. Accept mention in order, from best to worst score, until k of
             them are accepted. A mention can only be accepted if no
-            previously accepted span is overlapping with it.
+            previously accepted span is crossing with it.
 
         See section 5 of the E2ECoref paper and the C++ kernel in the
         E2ECoref repository.
@@ -1116,10 +1116,12 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
 
         spans_idx = spans_indexs(list(range(words_nb)), self.config.max_span_size)
 
-        def spans_are_overlapping(
-            span1: Tuple[int, int], span2: Tuple[int, int]
-        ) -> bool:
-            return not (span1[1] <= span2[0] or span1[0] >= span2[1])
+        def spans_are_crossing(span1: Tuple[int, int], span2: Tuple[int, int]) -> bool:
+            start1, end1 = (span1[0], span1[1] - 1)
+            start2, end2 = (span2[0], span2[1] - 1)
+            return (start1 < start2 and start2 <= end1 and end1 < end2) or (
+                start2 < start1 and start1 <= end2 and end2 < end1
+            )
 
         _, sorted_indexs = torch.sort(mention_scores, 1, descending=True)
         # TODO: what if we can't have top_mentions_nb mentions ??
@@ -1134,7 +1136,7 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
                 span_index = int(sorted_indexs[b_i][s_j].item())
                 if not any(
                     [
-                        spans_are_overlapping(
+                        spans_are_crossing(
                             spans_idx[span_index], spans_idx[mention_idx]
                         )
                         for mention_idx in mention_indexs[-1]
