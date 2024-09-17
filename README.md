@@ -118,8 +118,6 @@ This results in:
 
 Even if the mentions `Princess Liana` and `She` are not in the same chunk, hierarchical merging still resolves this case correctly.
 
-*Note that, at the time of writing, the performance of the hierarchical merging feature has not been benchmarked*.
-
 
 ## Training a model
 
@@ -174,24 +172,13 @@ Several work make use of additional features. For now, only the distance between
 
 # Results
 
-The following table presents the results we obtained by training this model (for now, it has only one entry !). Note that:
+The following table presents the results we obtained on Litbank by training this model. We evaluate on 10% of Litbank documents, each of which consists of ~2000 tokens. The *split* column indicate whether documents were split in blocks of 512 tokens. The *HM* coumns indicates whether we use hierarchical merging.
 
-- the reported results use `max_span_size=5` instead of `max_span_size=10` as in training.
-- the reported results were obtained by splitting documents for performance reasons, with subdocuments having a maximum length of 11 sentences. They may not be accurate with the performance on full documents.
-- the reported results can not be directly compared to the performance in [the original Litbank paper](https://arxiv.org/abs/1912.01140) since we only compute performance on one split of the datas
-
-| Dataset | Base model        | MUC   | B3    | CEAF  | CoNLL F1 |
-|---------|-------------------|-------|-------|-------|----------|
-| Litbank | `bert-base-cased` | 77.35 | 67.63 | 56.66 | 67.21    |
-
-## Results on full documents
-
-The following table reports our results on the full Litbank documents (~2000 tokens each). We use `max_span_size=10`. HM stand for "Hierarchical Merging":
-
-| Dataset | Base model        | HM  | MUC   | B3    | CEAF  | BLANC | LEA   |
-|---------|-------------------|-----|-------|-------|-------|-------|-------|
-| Litbank | `bert-base-cased` | no  | 72.97 | 48.26 | 46.64 | 47.16 | 27.33 |
-| Litbank | `bert-base-cased` | yes | 72.29 | 51.73 | 46.36 | 55.67 | 35.14 |
+| Dataset | Base model        | split | HM  | MUC   | B3    | CEAF  | BLANC | LEA   | time (s) |
+|---------|-------------------|-------|-----|-------|-------|-------|-------|-------|----------|
+| Litbank | `bert-base-cased` | no    | no  | 75.03 | 60.66 | 48.71 | 62.96 | 32.84 | 22:07    |
+| Litbank | `bert-base-cased` | yes   | no  | 73.84 | 49.14 | 47.88 | 48.41 | 27.63 | 16:18    |
+| Litbank | `bert-base-cased` | yes   | yes | 74.54 | 59.30 | 46.98 | 62.69 | 42.46 | 21:13    |
 
 
 # Citation
