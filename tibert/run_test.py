@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Optional
 import os
 import functools as ft
 from transformers import BertTokenizerFast, CamembertTokenizerFast  # type: ignore
@@ -6,6 +6,7 @@ from tqdm import tqdm
 from sacred.experiment import Experiment
 from sacred.run import Run
 from sacred.commands import print_config
+from tibert import predict
 from tibert.bertcoref import (
     CoreferenceDataset,
     CoreferenceDocument,
@@ -15,7 +16,7 @@ from tibert.bertcoref import (
     BertForCoreferenceResolution,
     CamembertForCoreferenceResolution,
 )
-from tibert.score import score_coref_predictions
+from tibert.score import score_coref_predictions, score_mention_detection
 from tibert.predict import predict_coref
 from tibert.utils import split_coreference_document_tokens
 
@@ -29,6 +30,8 @@ def config():
     dataset_name: str = "litbank"
     dataset_path: str = os.path.expanduser("~/litbank")
     max_span_size: int = 10
+    # in tokens
+    limit_doc_size: Optional[int] = None
     hierarchical_merging: bool = False
     device_str: str = "auto"
     model_path: str
@@ -41,6 +44,7 @@ def main(
     dataset_name: Literal["litbank", "fr-litbank", "democrat"],
     dataset_path: str,
     max_span_size: int,
+    limit_doc_size: Optional[int],
     hierarchical_merging: bool,
     device_str: Literal["cuda", "cpu", "auto"],
     model_path: str,
@@ -79,36 +83,56 @@ def main(
     )
     _, test_dataset = dataset.splitted(0.9)
 
-    all_annotated_docs = []
-    for document in tqdm(test_dataset.documents):
-        doc_dataset = CoreferenceDataset(
-            split_coreference_document_tokens(document, 512),
+    if limit_doc_size is None:
+        all_annotated_docs = predict_coref(
+            [doc.tokens for doc in test_dataset.documents],
+            model,
             tokenizer,
-            max_span_size,
+            device_str=device_str,
+            batch_size=batch_size,
         )
-        if hierarchical_merging:
-            annotated_doc = predict_coref(
-                [doc.tokens for doc in doc_dataset.documents],
-                model,
+        assert isinstance(all_annotated_docs, list)
+    else:
+        all_annotated_docs = []
+        for document in tqdm(test_dataset.documents):
+            doc_dataset = CoreferenceDataset(
+                split_coreference_document_tokens(document, limit_doc_size),
                 tokenizer,
-                hierarchical_merging=True,
-                quiet=True,
-                device_str=device_str,
-                batch_size=batch_size,
+                max_span_size,
             )
-        else:
-            annotated_docs = predict_coref(
-                [doc.tokens for doc in doc_dataset.documents],
-                model,
-                tokenizer,
-                hierarchical_merging=False,
-                quiet=True,
-                device_str=device_str,
-                batch_size=batch_size,
-            )
-            assert isinstance(annotated_docs, list)
-            annotated_doc = CoreferenceDocument.concatenated(annotated_docs)
-        all_annotated_docs.append(annotated_doc)
+            if hierarchical_merging:
+                annotated_doc = predict_coref(
+                    [doc.tokens for doc in doc_dataset.documents],
+                    model,
+                    tokenizer,
+                    hierarchical_merging=True,
+                    quiet=True,
+                    device_str=device_str,
+                    batch_size=batch_size,
+                )
+            else:
+                annotated_docs = predict_coref(
+                    [doc.tokens for doc in doc_dataset.documents],
+                    model,
+                    tokenizer,
+                    quiet=True,
+                    device_str=device_str,
+                    batch_size=batch_size,
+                )
+                assert isinstance(annotated_docs, list)
+                annotated_doc = CoreferenceDocument.concatenated(annotated_docs)
+            all_annotated_docs.append(annotated_doc)
+
+    mention_pre, mention_rec, mention_f1 = score_mention_detection(
+        all_annotated_docs, test_dataset.documents
+    )
+    for metric_key, score in [
+        ("precision", mention_pre),
+        ("recall", mention_rec),
+        ("f1", mention_f1),
+    ]:
+        print(f"mention.{metric_key}={score}")
+        _run.log_scalar(f"mention.{metric_key}", score)
 
     scores = score_coref_predictions(all_annotated_docs, test_dataset.documents)
     for key, score_dict in scores.items():

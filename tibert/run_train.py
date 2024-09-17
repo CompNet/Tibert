@@ -14,6 +14,7 @@ from tibert import (
     load_train_checkpoint,
     predict_coref,
     score_coref_predictions,
+    score_mention_detection,
 )
 from tibert.bertcoref import CoreferenceDataset, load_democrat_dataset
 
@@ -144,6 +145,17 @@ def main(
         batch_size=batch_size,
     )
     assert isinstance(annotated_docs, list)
+
+    mention_pre, mention_rec, mention_f1 = score_mention_detection(
+        annotated_docs, test_dataset.documents
+    )
+    for metric_key, score in [
+        ("precision", mention_pre),
+        ("recall", mention_rec),
+        ("f1", mention_f1),
+    ]:
+        print(f"mention.{metric_key}={score}")
+        _run.log_scalar(f"mention.{metric_key}", score)
 
     metrics = score_coref_predictions(annotated_docs, test_dataset.documents)
     print(metrics)

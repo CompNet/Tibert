@@ -205,7 +205,7 @@ def merge_coref_outputs(
     return CoreferenceDocument(merged_left.tokens + merged_right.tokens, new_chains)
 
 
-def _stream_predict_wpieced_coref_raw(
+def _stream_predict_coref_raw(
     documents: List[Union[str, List[str]]],
     model: BertForCoreferenceResolution,
     tokenizer: PreTrainedTokenizerFast,
@@ -215,14 +215,7 @@ def _stream_predict_wpieced_coref_raw(
     lang: str = "en",
     return_hidden_state: bool = False,
 ) -> Generator[
-    Tuple[
-        List[CoreferenceDocument],
-        List[CoreferenceDocument],
-        BatchEncoding,
-        BertCoreferenceResolutionOutput,
-    ],
-    None,
-    None,
+    Tuple[List[CoreferenceDocument], BertCoreferenceResolutionOutput], None, None
 ]:
     """Low level inference interface."""
 
@@ -248,6 +241,7 @@ def _stream_predict_wpieced_coref_raw(
         tokenizer,
         model.config.max_span_size,
     )
+    dataset.set_test_()
     data_collator = DataCollatorForSpanClassification(
         tokenizer, model.config.max_span_size, device_str
     )
@@ -271,14 +265,9 @@ def _stream_predict_wpieced_coref_raw(
                 **batch, return_hidden_state=return_hidden_state
             )
 
-            out_docs = out.coreference_documents(
-                [
-                    [tokenizer.decode(t) for t in input_ids]  # type: ignore
-                    for input_ids in batch["input_ids"]
-                ]
-            )
+            out_docs = out.coreference_documents([doc.tokens for doc in batch_docs])
 
-            yield batch_docs, out_docs, batch, out
+            yield out_docs, out
 
 
 def stream_predict_coref(
@@ -303,16 +292,11 @@ def stream_predict_coref(
     :return: a list of ``CoreferenceDocument``, with annotated
              coreference chains.
     """
-    for original_docs, out_docs, batch, out in _stream_predict_wpieced_coref_raw(
+    for out_docs, _ in _stream_predict_coref_raw(
         documents, model, tokenizer, batch_size, quiet, device_str, lang
     ):
-        for batch_i, (original_doc, out_doc) in enumerate(zip(original_docs, out_docs)):
-            seq_size = batch["input_ids"].shape[1]
-            wp_to_token = [
-                batch.token_to_word(batch_i, token_index=i) for i in range(seq_size)
-            ]
-            doc = out_doc.from_wpieced_to_tokenized(original_doc.tokens, wp_to_token)
-            yield doc
+        for out_doc in out_docs:
+            yield out_doc
 
 
 def predict_coref(
@@ -344,13 +328,11 @@ def predict_coref(
     if hierarchical_merging:
         docs = []
         hidden_states = []
-        all_tokens = []
-        wp_to_token = []
 
         if len(documents) == 0:
             return None
 
-        for original_docs, out_docs, batch, out in _stream_predict_wpieced_coref_raw(
+        for out_docs, out in _stream_predict_coref_raw(
             documents,
             model,
             tokenizer,
@@ -365,28 +347,8 @@ def predict_coref(
             assert not out.hidden_states is None
             hidden_states += [h for h in out.hidden_states]
 
-            all_tokens += list(flatten(doc.tokens for doc in original_docs))
-
-            batch_size = batch["input_ids"].shape[0]
-            seq_size = batch["input_ids"].shape[1]
-            for batch_i in range(batch_size):
-                # we need to shift the index of tokens in the batch by
-                # the index of the last token of the previous batch
-                max_prev_wp_to_token = (
-                    0
-                    if len(wp_to_token) == 0
-                    else max([wtt for wtt in wp_to_token if not wtt is None], default=0)
-                )
-                for i in range(seq_size):
-                    wtt = batch.token_to_word(batch_i, token_index=i)
-                    if not wtt is None and max_prev_wp_to_token != 0:
-                        wtt += max_prev_wp_to_token + 1
-                    wp_to_token.append(wtt)
-
-        merged_doc_wpieced = merge_coref_outputs(docs, hidden_states, model, device_str)
-        assert not merged_doc_wpieced is None  # we know that len(docs) > 0
-
-        return merged_doc_wpieced.from_wpieced_to_tokenized(all_tokens, wp_to_token)
+        merged_doc = merge_coref_outputs(docs, hidden_states, model, device_str)
+        return merged_doc
 
     return list(
         stream_predict_coref(
