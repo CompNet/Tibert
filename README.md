@@ -174,11 +174,11 @@ Several work make use of additional features. For now, only the distance between
 
 The following table presents the results we obtained on Litbank by training this model. We evaluate on 10% of Litbank documents, each of which consists of ~2000 tokens. The *split* column indicate whether documents were split in blocks of 512 tokens. The *HM* coumns indicates whether we use hierarchical merging.
 
-| Dataset | Base model        | split | HM  | MUC   | B3    | CEAF  | BLANC | LEA   | time (s) |
-|---------|-------------------|-------|-----|-------|-------|-------|-------|-------|----------|
-| Litbank | `bert-base-cased` | no    | no  | 75.03 | 60.66 | 48.71 | 62.96 | 32.84 | 22:07    |
-| Litbank | `bert-base-cased` | yes   | no  | 73.84 | 49.14 | 47.88 | 48.41 | 27.63 | 16:18    |
-| Litbank | `bert-base-cased` | yes   | yes | 74.54 | 59.30 | 46.98 | 62.69 | 42.46 | 21:13    |
+| Dataset | Base model        | split | HM  | MUC   | B3    | CEAF  | BLANC | LEA   | time (m:s) |
+|---------|-------------------|-------|-----|-------|-------|-------|-------|-------|------------|
+| Litbank | `bert-base-cased` | no    | no  | 75.03 | 60.66 | 48.71 | 62.96 | 32.84 | 22:07      |
+| Litbank | `bert-base-cased` | yes   | no  | 73.84 | 49.14 | 47.88 | 48.41 | 27.63 | 16:18      |
+| Litbank | `bert-base-cased` | yes   | yes | 74.54 | 59.30 | 46.98 | 62.69 | 42.46 | 21:13      |
 
 
 # Citation
