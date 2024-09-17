@@ -10,7 +10,7 @@ from typing import (
     TypeVar,
     Union,
 )
-import re, glob, os
+import re, glob, os, warnings
 from collections import defaultdict
 from pathlib import Path
 from dataclasses import dataclass
@@ -332,9 +332,9 @@ class DataCollatorForSpanClassification(DataCollatorMixin):
             # same length yet.
             return_tensors=None,
         )
-        self.tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = (
-            warning_state
-        )
+        self.tokenizer.deprecation_warnings[
+            "Asking-to-pad-a-fast-tokenizer"
+        ] = warning_state
 
         # keep encoding info
         batch._encodings = [f.encodings[0] for f in features]
@@ -1349,9 +1349,11 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
             batch_word_ids = batch_word_ids[token_mask]
             words_nb = len(set(batch_word_ids.tolist()))
             words = torch.zeros(words_nb, h, device=device)
-            words.index_reduce_(
-                0, batch_word_ids, batch_encoded, "mean", include_self=False
-            )
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                words.index_reduce_(
+                    0, batch_word_ids, batch_encoded, "mean", include_self=False
+                )
             word_encoded.append(words)
 
         # each 2D-tensor in word_encoded is of shape (w_i, h). w_i
