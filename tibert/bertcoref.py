@@ -332,9 +332,9 @@ class DataCollatorForSpanClassification(DataCollatorMixin):
             # same length yet.
             return_tensors=None,
         )
-        self.tokenizer.deprecation_warnings[
-            "Asking-to-pad-a-fast-tokenizer"
-        ] = warning_state
+        self.tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = (
+            warning_state
+        )
 
         # keep encoding info
         batch._encodings = [f.encodings[0] for f in features]
@@ -686,11 +686,7 @@ def load_fr_litbank_dataset(
 ):
     root_path = os.path.expanduser(root_path.rstrip("/"))
     return CoreferenceDataset.from_sacr_dir(
-        f"{root_path}/sacr/Pers_Entites",
-        tokenizer,
-        max_span_size,
-        "en",
-        ignored_files=["schema.sacr", "elisabeth_Seton.sacr"],
+        f"{root_path}/sacr/annot_nested/annotInitiale", tokenizer, max_span_size, "fr"
     )
 
 
