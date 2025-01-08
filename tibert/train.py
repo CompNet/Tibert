@@ -48,7 +48,7 @@ def load_train_checkpoint(
 ]:
     config_class = model_class.config_class
 
-    checkpoint = torch.load(checkpoint_path)
+    checkpoint = torch.load(checkpoint_path, weights_only=True)
 
     model_config = config_class(**checkpoint["model_config"])
     model = model_class(model_config)
