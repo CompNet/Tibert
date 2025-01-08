@@ -532,50 +532,64 @@ class CoreferenceDataset(Dataset):
 
         for fpath in tqdm(paths):
             with open(fpath, **kwargs) as f:
-                text = f.read().replace("\n", " ")
+                text = f.read()
+                text = re.sub(r"#COLOR:.*\n", "", text)
+                text = re.sub(r"#TOKENIZATION-TYPE:.*\n", "", text)
+                text = text.replace("\n", " ")
 
                 def parse(text: str) -> Tuple[List[str], Dict[str, List[Mention]]]:
-                    splitted = re.split(r"({T[0-9]+:EN=\".*?\" [^{]*})", text)
-
-                    if len(splitted) == 1:
-                        return m_tokenizer.tokenize(text, escape=False), {}
-
+                    # SACR format example:
+                    # {T109:EN="p PER" Le nouveau-né} s’agite dans {T109:EN="p PER" son} berceau.
+                    # This format can be nested
                     tokens: List[str] = []
                     # { id => chain }
                     chains: Dict[str, List[Mention]] = defaultdict(list)
 
-                    # SACR format example:
-                    # {T109:EN="p PER" Le nouveau-né} s’agite dans {T109:EN="p PER" son} berceau.
-                    #
-                    # split the text using a pattern that matches text
-                    # between braces. The text variable has,
-                    # alternatively, either the text between braces or
-                    # regulare text.
-                    for i, text in enumerate(splitted):
-                        # regular text
-                        if i % 2 == 0:
-                            text_tokens = m_tokenizer.tokenize(text, escape=False)
-                            tokens += text_tokens
-                            # text inside braces represents a coreference mention
-                        else:
-                            text_match = re.search(r"{T([0-9]+):EN=\".*?\" (.*)}", text)
-                            assert not text_match is None
-                            text_tokens, subchains = parse(text_match.group(2))
+                    while True:
 
-                            for chain_key, mentions in subchains.items():
-                                chains[chain_key] += [
-                                    m.shifted(len(tokens)) for m in mentions
-                                ]
+                        m = re.search(r"{([^:]+):EN=\".*?\" ", text)
 
-                            chains[text_match.group(1)].append(
-                                Mention(
-                                    text_tokens,
-                                    len(tokens),
-                                    len(tokens) + len(text_tokens),
+                        if m is None:
+                            tokens += m_tokenizer.tokenize(text, escape=False)
+                            break
+
+                        # add tokens seen so far
+                        tokens += m_tokenizer.tokenize(text[: m.start()])
+
+                        # look for the end of the chain
+                        open_count = 0
+                        chain_end = None
+                        for i, c in enumerate(text[m.start() + 1 :]):
+                            if c == "{":
+                                open_count += 1
+                            elif c == "}":
+                                if open_count == 0:
+                                    chain_end = m.start() + 1 + i
+                                    break
+                                open_count -= 1
+                        if chain_end is None:
+                            raise ValueError(f"Unbalanced braces found in {fpath}.")
+
+                        # recursively parse mention and update tokens
+                        # and chains
+                        subtokens, subchains = parse(text[m.end() : chain_end])
+                        for subchain_id, subchain in subchains.items():
+                            for submention in subchain:
+                                chains[subchain_id].append(
+                                    submention.shifted(+len(tokens))
                                 )
-                            )
 
-                            tokens += text_tokens
+                        # deal with current mention
+                        chain_id = m.group(1)
+                        chains[chain_id].append(
+                            Mention(
+                                subtokens, len(tokens), len(tokens) + len(subtokens)
+                            )
+                        )
+
+                        # move forward
+                        tokens += subtokens
+                        text = text[chain_end + 1 :]
 
                     return tokens, chains
 
@@ -686,11 +700,7 @@ def load_fr_litbank_dataset(
 ):
     root_path = os.path.expanduser(root_path.rstrip("/"))
     return CoreferenceDataset.from_sacr_dir(
-        f"{root_path}/sacr/Pers_Entites",
-        tokenizer,
-        max_span_size,
-        "en",
-        ignored_files=["schema.sacr", "elisabeth_Seton.sacr"],
+        f"{root_path}/sacr/annot_nested/annotInitiale", tokenizer, max_span_size, "fr"
     )
 
 
