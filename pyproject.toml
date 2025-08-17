@@ -1,30 +1,28 @@
-[tool.poetry]
+[project]
 name = "tibert"
 version = "0.5.1"
 description = "BERT for Coreference Resolution"
 authors = ["Arthur Amalvy <arthur.amalvy@univ-avignon.fr>"]
+requires-python = ">=3.9,<3.13"
 license = "GPL-3.0-only"
 readme = "README.md"
 packages = [
     { include = "tibert" }
 ]
 
-[tool.poetry.dependencies]
-# required dependencies
-python = "^3.8,<3.13"
-torch = ">=2.0.0, !=2.0.1"
-transformers = "^4.40"
-tqdm = "^4.67"
-networkx = "^3.0"
-more-itertools = "^10.5"
-neleval = "^3.1.1"
-rich = "^13.5"
-sacremoses = "^0.1"
+dependencies = [
+    "torch>=2.0.0,!=2.0.1",
+    "transformers>=4.40",
+    "tqdm>=4.67",
+    "networkx>=3.0",
+    "more-itertools>=10.5",
+    "neleval>=3.1.1",
+    "rich>=13.5",
+    "sacremoses>=0.1"
+]
 
-[tool.poetry.group.dev.dependencies]
-hypothesis = "^6.82"
-pytest = "^8.3.0"
-
-[build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+[dependency-groups]
+dev = [
+    "hypothesis>=6.82",
+    "pytest>=8.3.0"
+]
