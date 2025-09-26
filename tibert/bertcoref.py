@@ -1119,7 +1119,9 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
                     break
 
                 span_index = int(sorted_indexs[b_i][s_j].item())
-                prev_mention_indexs = torch.tensor(mention_indexs[-1], dtype=torch.long)
+                prev_mention_indexs = torch.tensor(
+                    mention_indexs[-1], dtype=torch.long, device=device
+                )
                 if not torch.any(spans_overlap[span_index][prev_mention_indexs]):
                     mention_indexs[-1].append(sorted_indexs[b_i][s_j].item())
 
