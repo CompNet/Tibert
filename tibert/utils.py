@@ -62,6 +62,27 @@ def spans_indexs(seq: List, max_len: int) -> List[Tuple[int, int]]:
     return indexs
 
 
+def spans_indexs_overlap(spans_idx: List[Tuple[int, int]]) -> torch.Tensor:
+    """Compute a boolean tensor indicating span overlap.  Note that
+    overlapping does not entail containment.
+
+    :return: a tensor of shape (spans_nb, spans_nb)
+    """
+    t_spans_idx = torch.tensor(spans_idx)
+    spans_idx_1 = t_spans_idx.unsqueeze(1)
+    spans_idx_2 = t_spans_idx.unsqueeze(0)
+    overlap = (
+        (spans_idx_1[:, :, 0] < spans_idx_2[:, :, 0])
+        & (spans_idx_1[:, :, 1] > spans_idx_2[:, :, 0])
+        & (spans_idx_1[:, :, 1] < spans_idx_2[:, :, 1])
+    ) | (
+        (spans_idx_1[:, :, 0] > spans_idx_2[:, :, 0])
+        & (spans_idx_1[:, :, 0] < spans_idx_2[:, :, 1])
+        & (spans_idx_1[:, :, 1] > spans_idx_2[:, :, 1])
+    )
+    return overlap
+
+
 def batch_index_select(
     input: torch.Tensor, dim: int, index: torch.Tensor
 ) -> torch.Tensor:
