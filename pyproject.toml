@@ -1,6 +1,6 @@
 [project]
 name = "tibert"
-version = "0.4.0"
+version = "0.4.1"
 description = "BERT for Coreference Resolution"
 authors = [{ name = "Arthur Amalvy", email = "arthur.amalvy@univ-avignon.fr" }]
 requires-python = ">=3.8,<4,<3.11"
