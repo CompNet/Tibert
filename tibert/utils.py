@@ -41,9 +41,9 @@ def spans(seq: Collection[T], max_len: int) -> List[Tuple[T]]:
         from the beginning of seq to the end of seq.
 
 
-    :param seq:
-    :param max_len:
-    :return:
+    :param seq: input sequence
+    :param max_len: maximum length of spans
+    :return: an ordered list of spans
     """
     out_spans = []
     for i in range(1, min(len(seq) + 1, max_len + 1)):
@@ -53,7 +53,16 @@ def spans(seq: Collection[T], max_len: int) -> List[Tuple[T]]:
 
 
 def spans_indexs(seq: List, max_len: int) -> List[Tuple[int, int]]:
-    """"""
+    """Get the start and end indices of each span of the sequence.
+
+    .. note::
+
+        spans are ordered as in :func:`.spans`
+
+    :param seq: input sequence
+    :param max_len: maximum length of spans
+    :return: an ordered list of start/end span indices
+    """
     indexs = []
     for i in range(1, min(len(seq) + 1, max_len + 1)):
         for span in windowed(range(len(seq)), i):
