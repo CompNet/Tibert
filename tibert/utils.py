@@ -41,9 +41,9 @@ def spans(seq: Collection[T], max_len: int) -> List[Tuple[T]]:
         from the beginning of seq to the end of seq.
 
 
-    :param seq:
-    :param max_len:
-    :return:
+    :param seq: input sequence
+    :param max_len: maximum length of spans
+    :return: an ordered list of spans
     """
     out_spans = []
     for i in range(1, min(len(seq) + 1, max_len + 1)):
@@ -53,13 +53,43 @@ def spans(seq: Collection[T], max_len: int) -> List[Tuple[T]]:
 
 
 def spans_indexs(seq: List, max_len: int) -> List[Tuple[int, int]]:
-    """"""
+    """Get the start and end indices of each span of the sequence.
+
+    .. note::
+
+        spans are ordered as in :func:`.spans`
+
+    :param seq: input sequence
+    :param max_len: maximum length of spans
+    :return: an ordered list of start/end span indices
+    """
     indexs = []
     for i in range(1, min(len(seq) + 1, max_len + 1)):
         for span in windowed(range(len(seq)), i):
             span = cast(Tuple[int, ...], span)
             indexs.append((min(span), max(span) + 1))
     return indexs
+
+
+def spans_indexs_overlap(spans_idx: List[Tuple[int, int]]) -> torch.Tensor:
+    """Compute a boolean tensor indicating span overlap.  Note that
+    overlapping does not entail containment.
+
+    :return: a tensor of shape (spans_nb, spans_nb)
+    """
+    t_spans_idx = torch.tensor(spans_idx)
+    spans_idx_1 = t_spans_idx.unsqueeze(1)
+    spans_idx_2 = t_spans_idx.unsqueeze(0)
+    overlap = (
+        (spans_idx_1[:, :, 0] < spans_idx_2[:, :, 0])
+        & (spans_idx_1[:, :, 1] > spans_idx_2[:, :, 0])
+        & (spans_idx_1[:, :, 1] < spans_idx_2[:, :, 1])
+    ) | (
+        (spans_idx_1[:, :, 0] > spans_idx_2[:, :, 0])
+        & (spans_idx_1[:, :, 0] < spans_idx_2[:, :, 1])
+        & (spans_idx_1[:, :, 1] > spans_idx_2[:, :, 1])
+    )
+    return overlap
 
 
 def batch_index_select(

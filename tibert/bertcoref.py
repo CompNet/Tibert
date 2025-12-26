@@ -36,6 +36,7 @@ from tibert.utils import (
     spans,
     split_coreference_document,
     split_coreference_document_tokens,
+    spans_indexs_overlap,
 )
 
 
@@ -332,9 +333,9 @@ class DataCollatorForSpanClassification(DataCollatorMixin):
             # same length yet.
             return_tensors=None,
         )
-        self.tokenizer.deprecation_warnings[
-            "Asking-to-pad-a-fast-tokenizer"
-        ] = warning_state
+        self.tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = (
+            warning_state
+        )
 
         # keep encoding info
         batch._encodings = [f.encodings[0] for f in features]
@@ -546,7 +547,6 @@ class CoreferenceDataset(Dataset):
                     chains: Dict[str, List[Mention]] = defaultdict(list)
 
                     while True:
-
                         m = re.search(r"{([^:]+):EN=\".*?\" ", text)
 
                         if m is None:
@@ -1125,18 +1125,13 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
         assert top_mentions_nb <= spans_nb
 
         spans_idx = spans_indexs(list(range(words_nb)), self.config.max_span_size)
-
-        def spans_are_crossing(span1: Tuple[int, int], span2: Tuple[int, int]) -> bool:
-            start1, end1 = (span1[0], span1[1] - 1)
-            start2, end2 = (span2[0], span2[1] - 1)
-            return (start1 < start2 and start2 <= end1 and end1 < end2) or (
-                start2 < start1 and start1 <= end2 and end2 < end1
-            )
+        # (spans_nb, spans_nb)
+        spans_overlap = spans_indexs_overlap(spans_idx)
 
         _, sorted_indexs = torch.sort(mention_scores, 1, descending=True)
-        # TODO: what if we can't have top_mentions_nb mentions ??
         mention_indexs = []
-        # TODO: optim
+        # unfortunately this is a sequential process since we have to
+        # add mentions one by one
         for b_i in range(batch_size):
             mention_indexs.append([])
             for s_j in range(spans_nb):
@@ -1144,15 +1139,11 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
                     break
 
                 span_index = int(sorted_indexs[b_i][s_j].item())
-                if not any(
-                    [
-                        spans_are_crossing(
-                            spans_idx[span_index], spans_idx[mention_idx]
-                        )
-                        for mention_idx in mention_indexs[-1]
-                    ]
-                ):
-                    mention_indexs[-1].append(sorted_indexs[b_i][s_j])
+                prev_mention_indexs = torch.tensor(
+                    mention_indexs[-1], dtype=torch.long, device=device
+                )
+                if not torch.any(spans_overlap[span_index][prev_mention_indexs]):
+                    mention_indexs[-1].append(sorted_indexs[b_i][s_j].item())
 
         # To construct a tensor, we need all lists of mention to be
         # the same size : to do so, we cut them to have the length of
@@ -1479,7 +1470,9 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
         top_mentions_index = self.pruned_mentions_indexs(
             mention_scores, words_nb, top_mentions_nb
         )
-        # TODO: hack
+        # it is possible that we did not obtain top_mentions_nb
+        # mentions while pruning, so we update the variable to reflect
+        # that.
         top_mentions_nb = m = int(top_mentions_index.shape[1])
         assert top_mentions_index.shape == (b, m)
 
@@ -1562,7 +1555,6 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
         # -- loss computation --
         loss = None
         if coref_labels is not None and mention_labels is not None:
-
             # -- coref loss
 
             # NOTE: we have to rely on such a loop, as torch.gather
