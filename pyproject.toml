@@ -2,7 +2,9 @@
 name = "tibert"
 version = "0.5.3"
 description = "BERT for Coreference Resolution"
-authors = ["Arthur Amalvy <arthur.amalvy@univ-avignon.fr>"]
+authors = [
+    {name = "Arthur Amalvy", email = "arthur.amalvy@as.edu.tw"},
+]
 requires-python = ">=3.10,<3.15"
 license = "GPL-3.0-only"
 readme = "README.md"
