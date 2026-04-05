@@ -1,9 +1,9 @@
 [project]
 name = "tibert"
-version = "0.5.1"
+version = "0.5.3"
 description = "BERT for Coreference Resolution"
 authors = ["Arthur Amalvy <arthur.amalvy@univ-avignon.fr>"]
-requires-python = ">=3.9,<3.13"
+requires-python = ">=3.10,<3.15"
 license = "GPL-3.0-only"
 readme = "README.md"
 packages = [
@@ -11,8 +11,8 @@ packages = [
 ]
 
 dependencies = [
-    "torch>=2.0.0,!=2.0.1",
-    "transformers>=4.40",
+    "torch>=2.8.0",
+    "transformers>=5.0.0",
     "tqdm>=4.67",
     "networkx>=3.0",
     "more-itertools>=10.5",
@@ -26,3 +26,71 @@ dev = [
     "hypothesis>=6.82",
     "pytest>=8.3.0"
 ]
+
+[project.optional-dependencies]
+cpu = [
+  "torch>=2.8.0",
+]
+cuda128 = [
+  "torch>=2.8.0",
+]
+cuda129 = [
+  "torch>=2.8.0",
+]
+rocm63 = [
+  "torch>=2.8.0",
+  "pytorch-triton-rocm>=3.1.0", 
+]
+rocm64 = [
+  "torch>=2.8.0",
+  "pytorch-triton-rocm>=3.1.0", 
+]
+
+[tool.uv]
+conflicts = [
+  [
+    { extra = "cpu" },
+    { extra = "cuda128" },
+    { extra = "cuda129" },
+    { extra = "rocm63" },
+    { extra = "rocm64" },
+  ],
+]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu", extra = "cpu" },
+  { index = "pytorch-cuda128", extra = "cuda128" },
+  { index = "pytorch-cuda129", extra = "cuda129" },
+  { index = "pytorch-rocm63", extra = "rocm63" },
+  { index = "pytorch-rocm64", extra = "rocm64" },
+]
+pytorch-triton-rocm = [
+  { index = "pytorch-rocm63", extra = "rocm63" },
+  { index = "pytorch-rocm64", extra = "rocm64" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cuda128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cuda129"
+url = "https://download.pytorch.org/whl/cu129"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-rocm63"
+url = "https://download.pytorch.org/whl/rocm6.3"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-rocm64"
+url = "https://download.pytorch.org/whl/rocm6.4"
+explicit = true
