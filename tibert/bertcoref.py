@@ -1028,6 +1028,7 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
             + list(self.mention_scorer_hidden.parameters())
             + list(self.mention_compatibility_scorer.parameters())
             + list(self.mention_compatibility_scorer_hidden.parameters())
+            + list(self.dist_bucket_embedding.parameters())
         )
 
     def mention_score(self, span_bounds: torch.Tensor) -> torch.Tensor:
