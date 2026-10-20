@@ -1126,7 +1126,7 @@ class BertForCoreferenceResolution(BertPreTrainedModel):
 
         spans_idx = spans_indexs(list(range(words_nb)), self.config.max_span_size)
         # (spans_nb, spans_nb)
-        spans_overlap = spans_indexs_overlap(spans_idx)
+        spans_overlap = spans_indexs_overlap(spans_idx).to(device)
 
         _, sorted_indexs = torch.sort(mention_scores, 1, descending=True)
         mention_indexs = []
