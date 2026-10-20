@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, TypeVar, Collection, List, Tuple, cast
+from typing import TYPE_CHECKING, TypeVar, Sequence, List, Tuple, cast
 from more_itertools import windowed
 from rich.console import Console
 import torch
@@ -32,23 +32,25 @@ def get_cat_color(index: int) -> str:
 T = TypeVar("T")
 
 
-def spans(seq: Collection[T], max_len: int) -> List[Tuple[T]]:
-    """Cut the input sequence into all possible spans up to a maximum length
+def spans(seq: Sequence[T], max_len: int) -> List[Tuple[T, ...]]:
+    """Cut the input sequence into all possible spans up to a maximum
+    length
 
     .. note::
 
-        spans are ordered from the smallest to the biggest,
-        from the beginning of seq to the end of seq.
-
+        spans are ordered by /earlier end of span/ first, and from the
+        smallest to the biggest then. This ensures that a longer
+        sequence only add later spans.
 
     :param seq: input sequence
     :param max_len: maximum length of spans
+
     :return: an ordered list of spans
     """
     out_spans = []
-    for i in range(1, min(len(seq) + 1, max_len + 1)):
-        for span in windowed(seq, i):
-            out_spans.append(span)
+    for end in range(1, len(seq) + 1):
+        for length in range(1, min(max_len, end) + 1):
+            out_spans.append(tuple(seq[end - length : end]))
     return out_spans
 
 
@@ -64,10 +66,9 @@ def spans_indexs(seq: List, max_len: int) -> List[Tuple[int, int]]:
     :return: an ordered list of start/end span indices
     """
     indexs = []
-    for i in range(1, min(len(seq) + 1, max_len + 1)):
-        for span in windowed(range(len(seq)), i):
-            span = cast(Tuple[int, ...], span)
-            indexs.append((min(span), max(span) + 1))
+    for end in range(1, len(seq) + 1):
+        for length in range(1, min(max_len, end) + 1):
+            indexs.append((end - length, end))
     return indexs
 
 
