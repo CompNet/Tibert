@@ -124,17 +124,22 @@ def merge_coref_outputs(
         # compute distance feature
         seq_size = len(merged_left.tokens) + len(merged_right.tokens)
         spans_idx = spans_indexs(list(range(seq_size)), model.config.max_span_size)
+        span2idx = {span: i for i, span in enumerate(spans_idx)}
 
-        left_mentions_idx = [
-            max(m.end_idx for m in chain) for chain in merged_left.coref_chains
+        left_mentions = [
+            max(chain, key=lambda m: m.end_idx) for chain in merged_left.coref_chains
         ]
+        left_mentions_idx = [span2idx[(m.start_idx, m.end_idx)] for m in left_mentions]
         left_mentions_idx = torch.tensor(left_mentions_idx).unsqueeze(0)
         assert left_mentions_idx.shape == (b, a)
 
         roffset = len(merged_left.tokens)
-        right_mentions_idx = [
-            min(m.start_idx + roffset for m in chain)
+        right_mentions = [
+            min(chain, key=lambda m: m.start_idx).shifted(roffset)
             for chain in merged_right.coref_chains
+        ]
+        right_mentions_idx = [
+            span2idx[(m.start_idx, m.end_idx)] for m in right_mentions
         ]
         right_mentions_idx = torch.tensor(right_mentions_idx).unsqueeze(0).to(device)
         assert right_mentions_idx.shape == (b, m)
