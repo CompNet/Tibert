@@ -1,6 +1,6 @@
 [project]
 name = "tibert"
-version = "0.5.3"
+version = "0.6.0"
 description = "BERT for Coreference Resolution"
 authors = [
     {name = "Arthur Amalvy", email = "arthuramalvy@as.edu.tw"},
