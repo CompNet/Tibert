@@ -23,7 +23,7 @@ from tibert.utils import pprint_coreference_document
 from transformers import BertTokenizerFast
 
 model = BertForCoreferenceResolution.from_pretrained(
-    "compnet-renard/bert-base-cased-literary-coref"
+    "compnet-renard/bert-base-cased-literary-coref-v2"
 )
 tokenizer = BertTokenizerFast.from_pretrained("bert-base-cased")
 
@@ -48,7 +48,7 @@ from transformers import BertTokenizerFast
 from tibert import predict_coref, BertForCoreferenceResolution
 
 model = BertForCoreferenceResolution.from_pretrained(
-    "compnet-renard/bert-base-cased-literary-coref"
+    "compnet-renard/bert-base-cased-literary-coref-v2"
 )
 tokenizer = BertTokenizerFast.from_pretrained("bert-base-cased")
 
@@ -98,7 +98,7 @@ from tibert.utils import pprint_coreference_document
 from transformers import BertTokenizerFast
 
 model = BertForCoreferenceResolution.from_pretrained(
-    "compnet-renard/bert-base-cased-literary-coref"
+    "compnet-renard/bert-base-cased-literary-coref-v2"
 )
 tokenizer = BertTokenizerFast.from_pretrained("bert-base-cased")
 
@@ -172,14 +172,23 @@ Several work make use of additional features. For now, only the distance between
 
 # Results
 
-The following table presents the results we obtained on Litbank by training this model. We evaluate on 10% of Litbank documents, each of which consists of ~2000 tokens. The *split* column indicate whether documents were split in blocks of 512 tokens. The *HM* coumns indicates whether we use hierarchical merging.
+The following table presents the results we obtained on Litbank by training this model. We evaluate on 10% of Litbank documents, each of which consists of ~2000 tokens. The *split* column indicate whether documents were split in blocks of 512 tokens. The *HM* coumns indicates whether we use hierarchical merging. Time is measured on cpu inference.
+
+# compnet-renard/bert-base-cased-literary-coref
 
 | Dataset | Base model        | split | HM  | MUC   | B3    | CEAF  | BLANC | LEA   | time (m:s) |
 |---------|-------------------|-------|-----|-------|-------|-------|-------|-------|------------|
-| Litbank | `bert-base-cased` | no    | no  | 75.03 | 60.66 | 48.71 | 62.96 | 32.84 | 22:07      |
-| Litbank | `bert-base-cased` | yes   | no  | 73.84 | 49.14 | 47.88 | 48.41 | 27.63 | 16:18      |
-| Litbank | `bert-base-cased` | yes   | yes | 74.54 | 59.30 | 46.98 | 62.69 | 42.46 | 21:13      |
+| Litbank | `bert-base-cased` | no    | no  | 75.03 | 60.66 | 48.71 | 62.96 | 32.84 | 01:40      |
+| Litbank | `bert-base-cased` | yes   | no  | 73.84 | 49.14 | 47.88 | 48.41 | 27.63 | 00:57      |
+| Litbank | `bert-base-cased` | yes   | yes | 74.54 | 59.30 | 46.98 | 62.69 | 42.46 | 01:36      |
 
+# compnet-renard/bert-base-cased-literary-coref-v2
+
+| Dataset | Base model        | split | HM  | MUC   | B3    | CEAF  | BLANC | LEA   | time (m:s) |
+|---------|-------------------|-------|-----|-------|-------|-------|-------|-------|------------|
+| Litbank | `bert-base-cased` | no    | no  | 78.24 | 62.38 | 54.15 | 62.55 | 35.18 | 02:45      |
+| Litbank | `bert-base-cased` | yes   | no  | 75.30 | 51.76 | 52.83 | 51.23 | 29.44 | 01:59      |
+| Litbank | `bert-base-cased` | yes   | yes | 76.12 | 61.50 | 53.36 | 63.97 | 44.07 | 02:36      |
 
 # Citation
 
